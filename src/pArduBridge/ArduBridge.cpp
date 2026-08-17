@@ -1281,6 +1281,8 @@ bool ArduBridge::buildReport()
   auto uav_isHealthy = m_uav_model.isHealthy();
   auto uav_hasHealth = m_uav_model.hasHealthTelemetry();
   auto uav_health = m_uav_model.getHealth();
+  auto uav_hasBattery = m_uav_model.hasBatteryTelemetry();
+  auto uav_battery = m_uav_model.getBattery();
   auto uav_hasGps = m_uav_model.hasGpsTelemetry();
   auto uav_gps_info = m_uav_model.getGpsInfo();
   auto uav_raw_gps = m_uav_model.getRawGps();
@@ -1315,6 +1317,18 @@ bool ArduBridge::buildReport()
   m_msgs << "             Armable: " << boolToString(uav_health.is_armable) << std::endl;
   if (uav_hasHealth)
     m_msgs << "Health Sample Age (s): " << doubleToStringX(m_uav_model.getHealthTelemetryAge(), sdigits) << std::endl;
+
+  m_msgs << std::endl;
+  m_msgs << "Battery: " << std::endl;
+  m_msgs << "------------------ " << std::endl;
+  m_msgs << "           Available: " << boolToString(uav_hasBattery) << std::endl;
+  m_msgs << "               Valid: " << boolToString(m_uav_model.hasValidBatteryTelemetry()) << std::endl;
+  if (uav_hasBattery)
+  {
+    m_msgs << "     Remaining (%): " << doubleToStringX(uav_battery.remaining_percent, sdigits) << std::endl;
+    m_msgs << "         Voltage (V): " << doubleToStringX(uav_battery.voltage_v, sdigits) << std::endl;
+    m_msgs << "       Sample Age (s): " << doubleToStringX(m_uav_model.getBatteryTelemetryAge(), sdigits) << std::endl;
+  }
 
   const auto arm_policy = m_uav_model.getArmPolicyDecision();
   const auto disarm_policy = m_uav_model.getDisarmPolicyDecision();
@@ -1696,6 +1710,19 @@ void ArduBridge::postHealthUpdate()
   postBool("UAV_HEALTH_ALL_OK", m_uav_model.isHealthy());
   if (m_uav_model.hasHealthTelemetry())
     Notify("UAV_HEALTH_AGE", m_uav_model.getHealthTelemetryAge(), m_curr_time);
+
+  const bool battery_available = m_uav_model.hasBatteryTelemetry();
+  const bool battery_valid = m_uav_model.hasValidBatteryTelemetry();
+  postBool("UAV_BATTERY_DATA_VALID", battery_valid);
+  if (battery_available)
+  {
+    const auto battery = m_uav_model.getBattery();
+    Notify("UAV_BATTERY_DATA_AGE", m_uav_model.getBatteryTelemetryAge(), m_curr_time);
+    if (std::isfinite(battery.remaining_percent))
+      Notify("UAV_BATTERY_SOC", battery.remaining_percent, m_curr_time);
+    if (std::isfinite(battery.voltage_v))
+      Notify("UAV_BATTERY_VOLTAGE", battery.voltage_v, m_curr_time);
+  }
 
   const auto arm_policy = m_uav_model.getArmPolicyDecision();
   const auto disarm_policy = m_uav_model.getDisarmPolicyDecision();

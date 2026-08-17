@@ -36,6 +36,8 @@ UAV_Model::UAV_Model(std::shared_ptr<WarningSystem> ws) : m_mavsdk_ptr{std::make
                                                           m_health_all_ok{false},
                                                           m_health_received{false},
                                                           m_last_health_update_s{0.0},
+                                                          m_battery_received{false},
+                                                          m_last_battery_update_s{0.0},
                                                           m_is_armed{false},
                                                           m_in_air{false},
                                                           m_target_altitudeAGL{100.0},
@@ -606,8 +608,13 @@ bool UAV_Model::subscribeToTelemetry()
   m_telemetry_ptr->subscribe_velocity_ned([&](mavsdk::Telemetry::VelocityNed vel)
                                           { mts_velocity_ned = vel; });
 
-  m_telemetry_ptr->subscribe_battery([&](mavsdk::Telemetry::Battery battery)
-                                     { mts_battery = battery; });
+  m_telemetry_ptr->subscribe_battery([this](mavsdk::Telemetry::Battery battery)
+                                     {
+                                       mts_battery = battery;
+                                       m_last_battery_update_s = std::chrono::duration<double>(
+                                           std::chrono::steady_clock::now().time_since_epoch()).count();
+                                       m_battery_received = true;
+                                     });
 
   m_telemetry_ptr->subscribe_flight_mode([&](mavsdk::Telemetry::FlightMode flight_mode)
                                          { mts_flight_mode = flight_mode; });
@@ -698,6 +705,31 @@ double UAV_Model::getHealthTelemetryAge() const
   const double now_s = std::chrono::duration<double>(
       std::chrono::steady_clock::now().time_since_epoch()).count();
   return std::max(0.0, now_s - m_last_health_update_s.load());
+}
+
+double UAV_Model::getBatteryTelemetryAge() const
+{
+  if (!m_battery_received)
+  {
+    return -1.0;
+  }
+
+  const double now_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  return std::max(0.0, now_s - m_last_battery_update_s.load());
+}
+
+bool UAV_Model::hasValidBatteryTelemetry() const
+{
+  if (!m_battery_received || getBatteryTelemetryAge() > BATTERY_TELEMETRY_MAX_AGE_S)
+  {
+    return false;
+  }
+
+  const auto battery = mts_battery.get();
+  return std::isfinite(battery.remaining_percent) &&
+         battery.remaining_percent >= 0.0f &&
+         battery.remaining_percent <= 100.0f;
 }
 
 double UAV_Model::getLandedStateTelemetryAge() const

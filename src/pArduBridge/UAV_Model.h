@@ -49,6 +49,7 @@ class UAV_Model
 {
 public:
   static constexpr double HEALTH_TELEMETRY_MAX_AGE_S = 3.0;
+  static constexpr double BATTERY_TELEMETRY_MAX_AGE_S = 3.0;
   static constexpr double LANDED_STATE_TELEMETRY_MAX_AGE_S = 2.0;
   static constexpr double MODE_CONFIRMATION_TIMEOUT_S = 5.0;
   static constexpr double MODE_CONFIRMATION_DWELL_S = 0.5;
@@ -222,6 +223,10 @@ public:
   bool hasHealthTelemetry() const { return m_health_received; }
   mavsdk::Telemetry::Health getHealth() const { return mts_health.get(); }
   double getHealthTelemetryAge() const;
+  bool hasBatteryTelemetry() const { return m_battery_received; }
+  bool hasValidBatteryTelemetry() const;
+  mavsdk::Telemetry::Battery getBattery() const { return mts_battery.get(); }
+  double getBatteryTelemetryAge() const;
   bool hasGpsTelemetry() const { return m_gps_received; }
   mavsdk::Telemetry::GpsInfo getGpsInfo() const { return mts_gps_info.get(); }
   mavsdk::Telemetry::RawGps getRawGps() const { return mts_raw_gps.get(); }
@@ -405,6 +410,8 @@ protected:
   std::atomic<bool> m_health_all_ok;
   std::atomic<bool> m_health_received;
   std::atomic<double> m_last_health_update_s;
+  std::atomic<bool> m_battery_received;
+  std::atomic<double> m_last_battery_update_s;
   std::atomic<bool> m_is_armed;
   std::atomic<bool> m_in_air;
 

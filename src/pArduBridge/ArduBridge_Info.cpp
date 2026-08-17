@@ -145,6 +145,10 @@ void showInterfaceAndExit()
   blk("  UAV_IS_ARMABLE             // pre-arm status reported by MAVSDK                    ");
   blk("  UAV_HEALTH_ALL_OK          // MAVSDK aggregate health                               ");
   blk("  UAV_HEALTH_AGE             // Seconds since the last detailed health sample         ");
+  blk("  UAV_BATTERY_SOC            // Estimated remaining charge, percent                    ");
+  blk("  UAV_BATTERY_VOLTAGE        // Primary battery voltage, V                             ");
+  blk("  UAV_BATTERY_DATA_VALID     // 1 when remaining charge is finite and no more than 3 s old ");
+  blk("  UAV_BATTERY_DATA_AGE       // Seconds since the last MAVSDK battery sample            ");
   blk("  UAV_ARM_POLICY_READY       // 1 when bridge policy permits a new ARM submission      ");
   blk("  UAV_ARM_POLICY_REASON      // Stable reason token, e.g. READY or HEALTH_STALE        ");
   blk("  UAV_DISARM_POLICY_READY    // 1 when bridge policy permits a new DISARM submission   ");
