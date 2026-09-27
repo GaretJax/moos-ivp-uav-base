@@ -37,6 +37,7 @@ ProcessConfig = pArduBridge
   takeoff_altitude = 10
   precision_loiter_enter_loiter = true
   command_groundspeed = true
+  passive = false
   is_sim = false
   logger = false
 }
@@ -56,6 +57,7 @@ ProcessConfig = pArduBridge
 | `command_groundspeed` or `cmd_gs` | boolean | Also command groundspeed. Copter forces this true; Plane normally commands airspeed. |
 | `precision_loiter_enter_loiter` | boolean | Default true. If false, `PRECISION_LOITER` requires the FC to already be in native Loiter. |
 | `is_sim` | boolean | For Plane SITL, false means retain the FC mission and register its home; true replaces it with the bridge's built-in simulation mission. Copter always retains the FC mission. |
+| `passive` | `true` or `false` | Receive and publish telemetry without mission setup, parameter polling, message-rate requests, command processing, or command-related MOOS subscriptions. Default false. MAVSDK may still emit its ground-station heartbeat. |
 | `logger` | `true` or `false` | Enables the app's auxiliary text logger. This is separate from MOOS `pLogger`. |
 
 Common endpoints:
@@ -73,6 +75,12 @@ url_protocol = serial
 url          = 127.0.0.1:5760
 url_protocol = tcp
 ```
+
+## Passive observer mode
+
+Set `passive=true` when an instance must observe a MAVLink stream without controlling the vehicle. Passive mode retains all existing telemetry subscriptions and MOOS telemetry publications, including `LANDING_TARGET`, but skips mission setup, parameter polling, telemetry-rate requests, the command sender, control-state publications, and all command-related MOOS registrations. MAVSDK may still transmit its ground-station heartbeat; passive mode guarantees that the bridge does not issue vehicle, mission, parameter, or message-rate commands.
+
+For strict MOOS isolation, run the passive instance in a separate community and share only the required telemetry variables outward.
 
 ## Control ownership
 

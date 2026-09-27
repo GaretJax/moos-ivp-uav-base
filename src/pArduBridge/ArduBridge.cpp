@@ -43,6 +43,7 @@ ArduBridge::ArduBridge()
       m_do_helm_survey{false},
       m_do_helm_voronoi{false},
       m_is_simulation{false},
+      m_passive{false},
       m_command_groundSpeed{false},
       m_precision_loiter_enter_loiter{true},
       m_helm_setpoint_timeout{2.0},
@@ -431,13 +432,16 @@ bool ArduBridge::OnConnectToServer()
 {
   registerVariables();
 
-  m_warning_system_ptr->queue_monitorCondition("Copter is in Guided while the Helm is parked", [this]()
-                                               { return m_uav_model.isCopter() && m_guided_parked_since >= 0 &&
-                                                        ((m_curr_time - m_guided_parked_since) > 2.0); });
+  if (!m_passive)
+  {
+    m_warning_system_ptr->queue_monitorCondition("Copter is in Guided while the Helm is parked", [this]()
+                                                 { return m_uav_model.isCopter() && m_guided_parked_since >= 0 &&
+                                                          ((m_curr_time - m_guided_parked_since) > 2.0); });
 
-  Notify("AUTOPILOT_MODE", helmModeToString(m_autopilot_mode), m_curr_time);
-  Notify("CONTROL_AUTHORITY", controlAuthorityToString(m_autopilot_mode), m_curr_time);
-  reportEvent("Control authority: " + controlAuthorityToString(m_autopilot_mode));
+    Notify("AUTOPILOT_MODE", helmModeToString(m_autopilot_mode), m_curr_time);
+    Notify("CONTROL_AUTHORITY", controlAuthorityToString(m_autopilot_mode), m_curr_time);
+    reportEvent("Control authority: " + controlAuthorityToString(m_autopilot_mode));
+  }
   return (true);
 }
 
@@ -450,6 +454,15 @@ bool ArduBridge::Iterate()
   // Logger::info("Iterate Start");
 
   AppCastingMOOSApp::Iterate();
+
+  if (m_passive)
+  {
+    postTelemetryUpdate(m_uav_prefix);
+    postHealthUpdate();
+    postLandingTargetUpdate();
+    AppCastingMOOSApp::PostReport();
+    return true;
+  }
 
   //////////////////////////////////////////////////////////////
   //////  Blocking Functions - These functions will block until they are done
@@ -1016,6 +1029,10 @@ bool ArduBridge::OnStartUp()
     {
       handled = setBooleanOnString(m_is_simulation, value);
     }
+    else if (param == "passive" && isBoolean(value))
+    {
+      handled = setBooleanOnString(m_passive, value);
+    }
     else if ((param == "command_groundspeed" || param == "cmd_gs") && isBoolean(value))
     {
       handled = setBooleanOnString(m_command_groundSpeed, value);
@@ -1172,7 +1189,7 @@ bool ArduBridge::OnStartUp()
     }
   }
 
-  if (!m_uav_model.setUpMission(!m_is_simulation))
+  if (!m_passive && !m_uav_model.setUpMission(!m_is_simulation))
   {
     std::cout << "Mission setup failed" << std::endl;
     return (false);
@@ -1184,7 +1201,18 @@ bool ArduBridge::OnStartUp()
     return (false);
   }
 
-  m_uav_model.startCommandSender();
+  if (m_passive)
+  {
+    if (!m_uav_model.startPassiveTelemetry())
+    {
+      std::cout << "Failed to subscribe to passive telemetry" << std::endl;
+      return (false);
+    }
+  }
+  else
+  {
+    m_uav_model.startCommandSender();
+  }
 
   m_uav_model.registerSendDesiredValuesFunction([this](UAV_Model &uav, bool forceSend)
                                                 {
@@ -1204,9 +1232,11 @@ bool ArduBridge::OnStartUp()
 
   m_warning_system_ptr->checkConditions(); // Check for warnings and remove/raise them as needed
 
-  postSpeedUpdateToBehaviors(m_uav_model.getTargetAirSpeed());
-
-  visualizeHomeLocation();
+  if (!m_passive)
+  {
+    postSpeedUpdateToBehaviors(m_uav_model.getTargetAirSpeed());
+    visualizeHomeLocation();
+  }
 
   registerVariables();
   return (true);
@@ -1218,6 +1248,9 @@ bool ArduBridge::OnStartUp()
 void ArduBridge::registerVariables()
 {
   AppCastingMOOSApp::RegisterVariables();
+  if (m_passive)
+    return;
+
   Register("FLY_WAYPOINT", 0);
   Register("DO_TAKEOFF", 0);
   Register("RETURN_TO_LAUNCH", 0);
@@ -1265,6 +1298,7 @@ bool ArduBridge::buildReport()
   m_msgs << "ArduPilot Port: " << m_cli_arg.get_port() << std::endl;
   m_msgs << "ArduPilot Protocol: " << protocol2str.at(m_cli_arg.get_protocol()) << std::endl;
   m_msgs << "Vehicle Type: " << m_uav_model.getVehicleTypeString() << std::endl;
+  m_msgs << "Passive Mode: " << boolToString(m_passive) << std::endl;
   const auto telemetry_rates = m_uav_model.getTelemetryRates();
   m_msgs << "Telemetry Position Rate: " << telemetry_rates.position_hz << " Hz" << std::endl;
   m_msgs << "Telemetry Attitude Rate: " << telemetry_rates.attitude_hz << " Hz" << std::endl;

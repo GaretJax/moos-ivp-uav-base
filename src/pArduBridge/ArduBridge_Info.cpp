@@ -76,6 +76,7 @@ void showExampleConfigAndExit()
   blk("  url          = 0.0.0.0:14550 // or ttyACM0:115200 for serial ");
   blk("  url_protocol = udp             // udp, tcp, or serial          ");
   blk("  vehicle_type = copter          // copter or plane              ");
+  blk("  passive      = false           // telemetry-only observer mode ");
   blk("  takeoff_altitude = 10          // meters AGL; Copter default   ");
   blk("  telemetry_position_hz = 5      // defaults apply to all vehicles");
   blk("  telemetry_attitude_hz = 5      // override per mission if needed");

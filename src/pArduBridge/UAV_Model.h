@@ -174,7 +174,7 @@ public:
   static PolicyDecision evaluateLandPolicy(const LandPolicyInputs &inputs);
   static PolicyDecision evaluatePrecisionLoiterPolicy(const PrecisionLoiterPolicyInputs &inputs);
 
-  bool subscribeToTelemetry();
+  bool subscribeToTelemetry(bool request_message_rates = true);
 
   // Polling functions
 
@@ -291,6 +291,7 @@ public:
 
   // For threading:
   void startCommandSender(); // Signal the thread to start
+  bool startPassiveTelemetry(); // Subscribe without commands, parameter polls, or rate requests
   void stopCommandSender();  // Signal the thread to stop
 
   void registerSendDesiredValuesFunction(std::function<void(UAV_Model &, bool)> sendDesiredValues);

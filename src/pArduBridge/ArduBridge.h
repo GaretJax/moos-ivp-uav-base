@@ -229,6 +229,7 @@ private: // State variables
   std::string m_vname;
   std::string m_vcolor;
   bool m_is_simulation;
+  bool m_passive;
   bool m_command_groundSpeed;
   bool m_precision_loiter_enter_loiter;
   double m_helm_setpoint_timeout;

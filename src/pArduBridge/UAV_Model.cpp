@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <cmath>
-#include <cstdlib>
 #include "UAV_Model.h"
 #include "MBUtils.h"
 #include "AngleUtils.h"
@@ -17,7 +16,6 @@
 
 #include <cmath>
 
-#include <future> // for async and promises
 #include <algorithm>
 #include <chrono>
 #include "Logger.h"
@@ -559,7 +557,7 @@ bool UAV_Model::requestDisarmAsync() const
   return false;
 }
 
-bool UAV_Model::subscribeToTelemetry()
+bool UAV_Model::subscribeToTelemetry(bool request_message_rates)
 {
 
   m_telemetry_ptr->subscribe_armed([&](bool is_armed)
@@ -651,6 +649,9 @@ bool UAV_Model::subscribeToTelemetry()
             std::chrono::steady_clock::now().time_since_epoch()).count();
         m_landing_target_received = true;
       });
+
+  if (!request_message_rates)
+    return true;
 
   if (m_telemetry_ptr->set_rate_position(m_telemetry_rates.position_hz) != mavsdk::Telemetry::Result::Success)
   {
@@ -2113,6 +2114,11 @@ void UAV_Model::startCommandSender()
     m_thread = std::thread([this]()
                            { runCommandsender(); });
   }
+}
+
+bool UAV_Model::startPassiveTelemetry()
+{
+  return subscribeToTelemetry(false);
 }
 
 void UAV_Model::runCommandsender()
