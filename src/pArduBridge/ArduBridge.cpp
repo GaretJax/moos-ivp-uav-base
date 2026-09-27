@@ -1375,11 +1375,20 @@ bool ArduBridge::buildReport()
            << static_cast<unsigned int>(uav_landingTarget.source_system) << "/"
            << static_cast<unsigned int>(uav_landingTarget.source_component) << std::endl;
     m_msgs << "      Position Valid: " << boolToString(uav_landingTarget.position_valid) << std::endl;
+    m_msgs << "        Time (usec): " << uav_landingTarget.time_usec << std::endl;
     m_msgs << "        Distance (m): " << doubleToStringX(uav_landingTarget.distance_m, sdigits) << std::endl;
+    m_msgs << "   Angular Size (rad): "
+           << doubleToStringX(uav_landingTarget.size_x_rad, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.size_y_rad, sdigits) << std::endl;
     m_msgs << "          X/Y/Z (m): "
            << doubleToStringX(uav_landingTarget.x_m, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.y_m, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.z_m, sdigits) << std::endl;
+    m_msgs << "        Q w/x/y/z: "
+           << doubleToStringX(uav_landingTarget.q_w, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.q_x, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.q_y, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.q_z, sdigits) << std::endl;
     m_msgs << "       Sample Age (s): "
            << doubleToStringX(m_uav_model.getLandingTargetTelemetryAge(), sdigits) << std::endl;
   }
@@ -1770,6 +1779,7 @@ void ArduBridge::postLandingTargetUpdate()
 
   const auto target = m_uav_model.getLandingTargetTelemetry();
   Notify("UAV_LANDING_TARGET_AGE", m_uav_model.getLandingTargetTelemetryAge(), m_curr_time);
+  Notify("UAV_LANDING_TARGET_TIME_USEC", static_cast<double>(target.time_usec), m_curr_time);
   Notify("UAV_LANDING_TARGET_SYSTEM_ID", static_cast<double>(target.source_system), m_curr_time);
   Notify("UAV_LANDING_TARGET_COMPONENT_ID", static_cast<double>(target.source_component), m_curr_time);
   Notify("UAV_LANDING_TARGET_TARGET_NUM", static_cast<double>(target.target_num), m_curr_time);
@@ -1779,9 +1789,15 @@ void ArduBridge::postLandingTargetUpdate()
   Notify("UAV_LANDING_TARGET_ANGLE_X", static_cast<double>(target.angle_x_rad), m_curr_time);
   Notify("UAV_LANDING_TARGET_ANGLE_Y", static_cast<double>(target.angle_y_rad), m_curr_time);
   Notify("UAV_LANDING_TARGET_DISTANCE", static_cast<double>(target.distance_m), m_curr_time);
+  Notify("UAV_LANDING_TARGET_SIZE_X", static_cast<double>(target.size_x_rad), m_curr_time);
+  Notify("UAV_LANDING_TARGET_SIZE_Y", static_cast<double>(target.size_y_rad), m_curr_time);
   Notify("UAV_LANDING_TARGET_X", static_cast<double>(target.x_m), m_curr_time);
   Notify("UAV_LANDING_TARGET_Y", static_cast<double>(target.y_m), m_curr_time);
   Notify("UAV_LANDING_TARGET_Z", static_cast<double>(target.z_m), m_curr_time);
+  Notify("UAV_LANDING_TARGET_Q_W", static_cast<double>(target.q_w), m_curr_time);
+  Notify("UAV_LANDING_TARGET_Q_X", static_cast<double>(target.q_x), m_curr_time);
+  Notify("UAV_LANDING_TARGET_Q_Y", static_cast<double>(target.q_y), m_curr_time);
+  Notify("UAV_LANDING_TARGET_Q_Z", static_cast<double>(target.q_z), m_curr_time);
 }
 
 //---------------------------------------------------------

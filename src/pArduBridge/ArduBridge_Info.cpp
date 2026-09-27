@@ -166,12 +166,15 @@ void showInterfaceAndExit()
   blk("  UAV_LANDED_STATE           // ON_GROUND, IN_AIR, TAKING_OFF, LANDING, or UNKNOWN    ");
   blk("  UAV_LANDED_STATE_AGE       // Seconds since the last landed-state sample             ");
   blk("  UAV_LANDING_TARGET_AVAILABLE // 1 when LANDING_TARGET is no more than 0.5 s old       ");
-  blk("  UAV_LANDING_TARGET_AGE       // Seconds since the last LANDING_TARGET                 ");
+  blk("  UAV_LANDING_TARGET_AGE, UAV_LANDING_TARGET_TIME_USEC                                   ");
   blk("  UAV_LANDING_TARGET_SYSTEM_ID, UAV_LANDING_TARGET_COMPONENT_ID                         ");
   blk("  UAV_LANDING_TARGET_TARGET_NUM, UAV_LANDING_TARGET_FRAME, UAV_LANDING_TARGET_TYPE       ");
   blk("  UAV_LANDING_TARGET_POSITION_VALID, UAV_LANDING_TARGET_DISTANCE                         ");
   blk("  UAV_LANDING_TARGET_ANGLE_X, UAV_LANDING_TARGET_ANGLE_Y                                 ");
+  blk("  UAV_LANDING_TARGET_SIZE_X, UAV_LANDING_TARGET_SIZE_Y                                   ");
   blk("  UAV_LANDING_TARGET_X, UAV_LANDING_TARGET_Y, UAV_LANDING_TARGET_Z                       ");
+  blk("  UAV_LANDING_TARGET_Q_W, UAV_LANDING_TARGET_Q_X                                         ");
+  blk("  UAV_LANDING_TARGET_Q_Y, UAV_LANDING_TARGET_Q_Z                                         ");
   blk("  AUTOPILOT_MODE             // pArduBridge helm state, not raw FC mode ");
   blk("  CONTROL_AUTHORITY          // FC/manual or MOOS Helm ownership summary ");
   blk("  HELM_SETPOINT_FRESH        // 1 when all Helm setpoints are within timeout ");

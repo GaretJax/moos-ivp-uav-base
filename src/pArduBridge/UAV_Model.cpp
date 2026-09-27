@@ -627,6 +627,7 @@ bool UAV_Model::subscribeToTelemetry()
         mavlink_msg_landing_target_decode(&message, &raw_target);
 
         LandingTargetTelemetry target;
+        target.time_usec = raw_target.time_usec;
         target.source_system = message.sysid;
         target.source_component = message.compid;
         target.target_num = raw_target.target_num;
@@ -636,9 +637,15 @@ bool UAV_Model::subscribeToTelemetry()
         target.angle_x_rad = raw_target.angle_x;
         target.angle_y_rad = raw_target.angle_y;
         target.distance_m = raw_target.distance;
+        target.size_x_rad = raw_target.size_x;
+        target.size_y_rad = raw_target.size_y;
         target.x_m = raw_target.x;
         target.y_m = raw_target.y;
         target.z_m = raw_target.z;
+        target.q_w = raw_target.q[0];
+        target.q_x = raw_target.q[1];
+        target.q_y = raw_target.q[2];
+        target.q_z = raw_target.q[3];
         mts_landing_target.set(target);
         m_last_landing_target_update_s = std::chrono::duration<double>(
             std::chrono::steady_clock::now().time_since_epoch()).count();

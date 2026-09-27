@@ -226,7 +226,7 @@ If `prefix=UAV`, the app publishes:
 | Health | `UAV_HEALTH_AVAILABLE`, `UAV_HEALTH_GYRO`, `UAV_HEALTH_ACCEL`, `UAV_HEALTH_MAG`, `UAV_HEALTH_LOCAL_POSITION`, `UAV_HEALTH_GLOBAL_POSITION`, `UAV_HEALTH_HOME_POSITION`, `UAV_IS_ARMABLE`, `UAV_HEALTH_ALL_OK`, `UAV_HEALTH_AGE` |
 | Vehicle state | `UAV_IS_ARMED`, `UAV_LANDED_STATE_AVAILABLE`, `UAV_LANDED_STATE`, `UAV_LANDED_STATE_AGE` |
 | GPS | `UAV_GPS_AVAILABLE`, `UAV_GPS_FIX_TYPE`, `UAV_GPS_SATELLITES`, `UAV_GPS_HDOP`, `UAV_GPS_VDOP`, `UAV_GPS_AGE` |
-| Landing target | `UAV_LANDING_TARGET_AVAILABLE`, `UAV_LANDING_TARGET_AGE`, source system/component IDs, target number/frame/type, position-valid flag, angles, distance, and X/Y/Z |
+| Landing target | `UAV_LANDING_TARGET_AVAILABLE`, `UAV_LANDING_TARGET_AGE`, `UAV_LANDING_TARGET_TIME_USEC`, source system/component IDs, target number/frame/type, position-valid flag, angles, angular sizes, distance, X/Y/Z, and orientation quaternion |
 | Policy | `UAV_ARM_POLICY_READY`, `UAV_ARM_POLICY_REASON`, `UAV_DISARM_POLICY_READY`, `UAV_DISARM_POLICY_REASON`, `UAV_LAND_POLICY_READY`, `UAV_LAND_POLICY_REASON` |
 | Command | `UAV_COMMAND_RESULT` |
 
@@ -234,7 +234,7 @@ GPS fix types use the MAVSDK enum: 0 No GPS, 1 No Fix, 2 Fix 2D, 3 Fix 3D, 4 DGP
 
 Landed states are `UNKNOWN`, `ON_GROUND`, `IN_AIR`, `TAKING_OFF`, and `LANDING`. They come from FC `EXTENDED_SYS_STATE` through MAVSDK and are authoritative for bridge ARM/DISARM policy, subject to availability and freshness.
 
-`UAV_LANDING_TARGET_AVAILABLE=1` means a `LANDING_TARGET` message from the vehicle's MAVLink system was received within the last 0.5 seconds. It becomes zero when traffic goes stale. Distance and X/Y/Z are reported exactly as supplied; inspect `UAV_LANDING_TARGET_POSITION_VALID` before treating the position fields as valid. These variables are observational and do not automatically change Precision Loiter policy or flight mode.
+`UAV_LANDING_TARGET_AVAILABLE=1` means a `LANDING_TARGET` message from the vehicle's MAVLink system was received within the last 0.5 seconds. It becomes zero when traffic goes stale. Distance, X/Y/Z, `UAV_LANDING_TARGET_SIZE_X/Y` (radians), and the `UAV_LANDING_TARGET_Q_W/X/Y/Z` quaternion are reported exactly as supplied. `UAV_LANDING_TARGET_TIME_USEC` is the sender-provided MAVLink timestamp represented as a MOOS double. Inspect `UAV_LANDING_TARGET_POSITION_VALID` before treating the position or quaternion fields as valid. These variables are observational and do not automatically change Precision Loiter policy or flight mode.
 
 ### Coordination and visualization
 

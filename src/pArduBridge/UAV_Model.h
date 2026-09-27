@@ -113,6 +113,7 @@ public:
 
   struct LandingTargetTelemetry
   {
+    uint64_t time_usec = 0;
     uint8_t source_system = 0;
     uint8_t source_component = 0;
     uint8_t target_num = 0;
@@ -122,9 +123,15 @@ public:
     float angle_x_rad = 0.0f;
     float angle_y_rad = 0.0f;
     float distance_m = 0.0f;
+    float size_x_rad = 0.0f;
+    float size_y_rad = 0.0f;
     float x_m = 0.0f;
     float y_m = 0.0f;
     float z_m = 0.0f;
+    float q_w = 0.0f;
+    float q_x = 0.0f;
+    float q_y = 0.0f;
+    float q_z = 0.0f;
   };
 
   using CommandCompletion = std::function<void(bool, const std::string &)>;
