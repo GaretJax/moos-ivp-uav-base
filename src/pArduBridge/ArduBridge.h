@@ -70,6 +70,9 @@ private: // Configuration variables
   mavsdk::CliArg m_cli_arg;
 
   bool m_geo_ok;
+  // MOOS-IvP apps built with USE_UTM (the default) use local UTM; match
+  // them with geodesy=utm so NAV_X/Y agree with pNodeReporter/pMarineViewer.
+  bool m_geo_utm = false;
   CMOOSGeodesy m_geodesy;
 
 private: // Autopilot Helm states
@@ -158,6 +161,9 @@ private: // Helperfunctions
 
   std::string xypointToString(const XYPoint &point) const;
   XYPoint transformLatLonToXY(const XYPoint &lat_lon);
+  // Local-frame bearing of true north at a position; non-zero only for UTM,
+  // whose grid north differs from true north by the convergence angle.
+  double gridBearingOfTrueNorth(double lat, double lon);
   bool isHelmOn() const { return (static_cast<int>(m_autopilot_mode) >= static_cast<int>(AutopilotHelmMode::HELM_ACTIVE)); };
   bool isHelmCommanding() const { return (static_cast<int>(m_autopilot_mode) > static_cast<int>(AutopilotHelmMode::HELM_ACTIVE)); };
   bool isHelmOn_NothingTodo() const { return (m_autopilot_mode == AutopilotHelmMode::HELM_ACTIVE); };

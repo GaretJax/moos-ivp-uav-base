@@ -85,6 +85,7 @@ void showExampleConfigAndExit()
   blk("  precision_loiter_enter_loiter = true // false requires FC Loiter already ");
   blk("  command_groundspeed = true     // forced true for Copter       ");
   blk("  is_sim = false                 // Plane SITL mission setup only");
+  blk("  geodesy = local_grid           // or utm, to match USE_UTM apps ");
   blk("  logger = false                                               ");
   blk("  prefix = UAV                                                 ");
   blk("  vname  = alpha                                               ");

@@ -10,6 +10,7 @@
 #include <cmath>
 #include "MBUtils.h"
 #include "ACTable.h"
+#include "AngleUtils.h"
 
 // #include "NodeMessage.h"
 #include "XYMarker.h"
@@ -124,7 +125,11 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
 
     if (key == "DESIRED_HEADING") // DESIRED_COURSE comes in as DESIRED_HEADING from pHelm for legacy reasons
     {
-      double course = msg.GetDouble();
+      // The Helm plans in the local grid; ArduPilot expects true courses.
+      double course = msg.GetDouble() -
+                      gridBearingOfTrueNorth(m_uav_model.getLatitude(),
+                                             m_uav_model.getLongitude());
+      course = angle360(course);
       m_helm_desiredValues->updateDesiredCourse(course);
     }
     else if (key == "DESIRED_SPEED")
@@ -1035,6 +1040,13 @@ bool ArduBridge::OnStartUp()
     {
       handled = setBooleanOnString(m_is_simulation, value);
     }
+    else if (param == "geodesy")
+    {
+      const std::string geodesy = tolower(value);
+      handled = (geodesy == "utm") || (geodesy == "local_grid");
+      if (handled)
+        m_geo_utm = (geodesy == "utm");
+    }
     else if (param == "passive" && isBoolean(value))
     {
       handled = setBooleanOnString(m_passive, value);
@@ -1728,9 +1740,15 @@ void ArduBridge::postTelemetryUpdate(const std::string &prefix)
   NotifyIfNonNan(prefix + "_SPEED", uav_SOG, m_curr_time);
 
   NotifyIfNonNan(prefix + "_ALTITUDE", uav_altitude_agl, m_curr_time);
+  NotifyIfNonNan(prefix + "_ALTITUDE_MSL", m_uav_model.getAltitudeMSL(), m_curr_time);
+  NotifyIfNonNan(prefix + "_YAW", m_uav_model.getHeading(), m_curr_time);
   NotifyIfNonNan(prefix + "_DEPTH", -uav_altitude_agl, m_curr_time);
 
-  NotifyIfNonNan(prefix + "_HEADING", uav_COG, m_curr_time); // NAV_COURSE comes in as NAV_HEADING for pNodeReporter
+  // NAV_COURSE comes in as NAV_HEADING for pNodeReporter. Report it in the
+  // same local grid as _X/_Y; _YAW stays a true heading.
+  NotifyIfNonNan(prefix + "_HEADING",
+                 angle360(uav_COG + gridBearingOfTrueNorth(lat, lon)),
+                 m_curr_time);
 }
 
 //---------------------------------------------------------
@@ -2032,7 +2050,10 @@ XYPoint ArduBridge::transformLatLonToXY(const XYPoint &lat_lon)
   double nav_x, nav_y;
   if (m_geo_ok)
   {
-    m_geodesy.LatLong2LocalGrid(lat, lon, nav_y, nav_x);
+    if (m_geo_utm)
+      m_geodesy.LatLong2LocalUTM(lat, lon, nav_y, nav_x);
+    else
+      m_geodesy.LatLong2LocalGrid(lat, lon, nav_y, nav_x);
   }
   else
   {
@@ -2041,6 +2062,17 @@ XYPoint ArduBridge::transformLatLonToXY(const XYPoint &lat_lon)
   }
 
   return XYPoint(nav_x, nav_y);
+}
+
+double ArduBridge::gridBearingOfTrueNorth(double lat, double lon)
+{
+  if (!m_geo_ok || !m_geo_utm || !lat || !lon ||
+      !std::isfinite(lat) || !std::isfinite(lon))
+    return 0;
+  // Project a point ~11 m true-north of the position.
+  const XYPoint here = transformLatLonToXY({lat, lon});
+  const XYPoint north = transformLatLonToXY({lat + 1e-4, lon});
+  return relAng(here.x(), here.y(), north.x(), north.y());
 }
 
 // Helper funcitons | only used in simulation
