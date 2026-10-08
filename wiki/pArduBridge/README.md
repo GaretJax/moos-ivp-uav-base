@@ -78,9 +78,9 @@ url_protocol = tcp
 
 ## Passive observer mode
 
-Set `passive=true` when an instance must observe a MAVLink stream without controlling the vehicle. Passive mode retains all existing telemetry subscriptions and MOOS telemetry publications, including `LANDING_TARGET`, but skips mission setup, parameter polling, telemetry-rate requests, the command sender, control-state publications, and all command-related MOOS registrations. MAVSDK may still transmit its ground-station heartbeat; passive mode guarantees that the bridge does not issue vehicle, mission, parameter, or message-rate commands.
+Set `passive=true` when an instance must observe a MAVLink stream without controlling the vehicle. Passive mode opens the transport immediately and remains alive while waiting for an autopilot heartbeat; telemetry subscriptions are installed when the system appears. It retains all existing telemetry publications, including `LANDING_TARGET`, but skips mission setup, parameter polling, telemetry-rate requests, the command sender, control-state publications, and all command-related MOOS registrations. MAVSDK may still transmit its ground-station heartbeat; passive mode guarantees that the bridge does not issue vehicle, mission, parameter, or message-rate commands.
 
-For strict MOOS isolation, run the passive instance in a separate community and share only the required telemetry variables outward.
+`PARDUBRIDGE_PASSIVE_STATE` reports `WAITING_FOR_SYSTEM`, `RECEIVING`, `SYSTEM_DISCONNECTED`, or `ERROR`; `PARDUBRIDGE_PASSIVE_CONNECTED` is 1 only while the discovered MAVLink system is connected. For strict MOOS isolation, run the passive instance in a separate community and share only the required telemetry variables outward.
 
 ## Control ownership
 

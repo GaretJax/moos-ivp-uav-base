@@ -151,16 +151,27 @@ public:
     double velocity_hz{DEFAULT_TELEMETRY_RATE_HZ};
   };
 
+  enum class PassiveState
+  {
+    Disabled,
+    WaitingForSystem,
+    Receiving,
+    SystemDisconnected,
+    Error
+  };
+
   UAV_Model(std::shared_ptr<WarningSystem> ws = nullptr);
-  virtual ~UAV_Model() {}
+  virtual ~UAV_Model() { stopCommandSender(); }
 
   void registerWarningSystem(std::shared_ptr<WarningSystem> ws) { m_warning_system_ptr = ws; }
   void setVehicleType(VehicleType vehicle_type);
   VehicleType getVehicleType() const { return m_vehicle_type; }
   std::string getVehicleTypeString() const;
   bool isCopter() const { return m_vehicle_type == VehicleType::Copter; }
-  bool connectToUAV(std::string url);
+  bool connectToUAV(std::string url, bool defer_system_discovery = false);
   bool setUpMission(bool onlyRegisterHome = true);
+  PassiveState getPassiveState() const;
+  static std::string passiveStateToString(PassiveState state);
 
   bool startMission() const;
   bool requestTakeoff() const;
@@ -317,8 +328,11 @@ public:
   }
 
 private:
+  bool initializeSystem(const std::shared_ptr<mavsdk::System> &system, bool command_plugins);
   void runCommandsender(); // Main loop for the UAV thread
+  void runPassiveTelemetry();
   std::atomic<bool> m_running{false};
+  std::atomic<PassiveState> m_passive_state{PassiveState::Disabled};
   std::thread m_thread;
 
   std::atomic<bool> m_sendValuesEnabled{false};

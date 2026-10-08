@@ -92,7 +92,7 @@ std::string UAV_Model::getVehicleTypeString() const
 //------------------------------------------------------------------------
 // Procedure: connectToUAV()
 
-bool UAV_Model::connectToUAV(std::string url)
+bool UAV_Model::connectToUAV(std::string url, bool defer_system_discovery)
 {
   if (url.empty())
   {
@@ -116,10 +116,15 @@ bool UAV_Model::connectToUAV(std::string url)
     return false;
   }
 
-  std::cout << "Connected to UAV\n";
+  std::cout << "MAVLink transport opened\n";
+
+  if (defer_system_discovery)
+  {
+    m_passive_state = PassiveState::WaitingForSystem;
+    return true;
+  }
 
   MOOSTraceFromCallback("Waiting to discover system...\n");
-
   auto system = m_mavsdk_ptr->first_autopilot(3.0);
   if (!system.has_value())
   {
@@ -128,18 +133,26 @@ bool UAV_Model::connectToUAV(std::string url)
     return false;
   }
 
-  std::cout << "UAV System discovered\n";
+  return initializeSystem(system.value(), true);
+}
 
-  m_system_ptr = system.value();
-
-  // m_mission_raw = MissionRaw{system.value()};
-  m_mission_raw_ptr = std::make_unique<mavsdk::MissionRaw>(m_system_ptr);
-  m_action_ptr = std::make_unique<mavsdk::Action>(m_system_ptr);
+bool UAV_Model::initializeSystem(const std::shared_ptr<mavsdk::System> &system, bool command_plugins)
+{
+  m_system_ptr = system;
   m_telemetry_ptr = std::make_unique<mavsdk::Telemetry>(m_system_ptr);
   m_mavPass_ptr = std::make_unique<mavsdk::MavlinkPassthrough>(m_system_ptr);
+
+  if (!command_plugins)
+  {
+    std::cout << "Passive MAVLink system discovered\n";
+    return subscribeToTelemetry(false);
+  }
+
+  m_mission_raw_ptr = std::make_unique<mavsdk::MissionRaw>(m_system_ptr);
+  m_action_ptr = std::make_unique<mavsdk::Action>(m_system_ptr);
   m_param_ptr = std::make_unique<mavsdk::Param>(m_system_ptr);
 
-  std::cout << "Created mission_raw, action, telemetry, mavlinkPassthrough and param\n";
+  std::cout << "UAV system discovered and plugins created\n";
 
   if (!isCopter())
   {
@@ -157,6 +170,29 @@ bool UAV_Model::connectToUAV(std::string url)
   }
 
   return true;
+}
+
+UAV_Model::PassiveState UAV_Model::getPassiveState() const
+{
+  return m_passive_state.load();
+}
+
+std::string UAV_Model::passiveStateToString(PassiveState state)
+{
+  switch (state)
+  {
+  case PassiveState::Disabled:
+    return "DISABLED";
+  case PassiveState::WaitingForSystem:
+    return "WAITING_FOR_SYSTEM";
+  case PassiveState::Receiving:
+    return "RECEIVING";
+  case PassiveState::SystemDisconnected:
+    return "SYSTEM_DISCONNECTED";
+  case PassiveState::Error:
+    return "ERROR";
+  }
+  return "ERROR";
 }
 
 bool UAV_Model::setUpMission(bool onlyRegisterHome)
@@ -2118,7 +2154,45 @@ void UAV_Model::startCommandSender()
 
 bool UAV_Model::startPassiveTelemetry()
 {
-  return subscribeToTelemetry(false);
+  if (m_running)
+    return false;
+
+  m_running = true;
+  m_passive_state = PassiveState::WaitingForSystem;
+  m_thread = std::thread([this]()
+                         { runPassiveTelemetry(); });
+  return true;
+}
+
+void UAV_Model::runPassiveTelemetry()
+{
+  while (m_running)
+  {
+    const auto system = m_mavsdk_ptr->first_autopilot(1.0);
+    if (!m_running)
+      break;
+
+    if (!system.has_value())
+    {
+      m_passive_state = PassiveState::WaitingForSystem;
+      continue;
+    }
+
+    if (!initializeSystem(system.value(), false))
+    {
+      m_passive_state = PassiveState::Error;
+      return;
+    }
+
+    while (m_running)
+    {
+      m_passive_state = system.value()->is_connected()
+                            ? PassiveState::Receiving
+                            : PassiveState::SystemDisconnected;
+      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    return;
+  }
 }
 
 void UAV_Model::runCommandsender()

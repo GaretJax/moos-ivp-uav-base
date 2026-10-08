@@ -457,6 +457,12 @@ bool ArduBridge::Iterate()
 
   if (m_passive)
   {
+    const auto passive_state = m_uav_model.getPassiveState();
+    Notify("PARDUBRIDGE_PASSIVE_STATE",
+           UAV_Model::passiveStateToString(passive_state), m_curr_time);
+    Notify("PARDUBRIDGE_PASSIVE_CONNECTED",
+           passive_state == UAV_Model::PassiveState::Receiving ? 1.0 : 0.0,
+           m_curr_time);
     postTelemetryUpdate(m_uav_prefix);
     postHealthUpdate();
     postLandingTargetUpdate();
@@ -1182,7 +1188,7 @@ bool ArduBridge::OnStartUp()
   else
   {
     // Connect to autopilot
-    if (!m_uav_model.connectToUAV(ardupilot_url))
+    if (!m_uav_model.connectToUAV(ardupilot_url, m_passive))
     {
       std::cout << "Failed to connect to ArduPilot" << std::endl;
       return (false);
@@ -1299,6 +1305,9 @@ bool ArduBridge::buildReport()
   m_msgs << "ArduPilot Protocol: " << protocol2str.at(m_cli_arg.get_protocol()) << std::endl;
   m_msgs << "Vehicle Type: " << m_uav_model.getVehicleTypeString() << std::endl;
   m_msgs << "Passive Mode: " << boolToString(m_passive) << std::endl;
+  if (m_passive)
+    m_msgs << "Passive State: "
+           << UAV_Model::passiveStateToString(m_uav_model.getPassiveState()) << std::endl;
   const auto telemetry_rates = m_uav_model.getTelemetryRates();
   m_msgs << "Telemetry Position Rate: " << telemetry_rates.position_hz << " Hz" << std::endl;
   m_msgs << "Telemetry Attitude Rate: " << telemetry_rates.attitude_hz << " Hz" << std::endl;

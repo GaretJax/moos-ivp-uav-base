@@ -176,6 +176,8 @@ void showInterfaceAndExit()
   blk("  UAV_LANDING_TARGET_X, UAV_LANDING_TARGET_Y, UAV_LANDING_TARGET_Z                       ");
   blk("  UAV_LANDING_TARGET_Q_W, UAV_LANDING_TARGET_Q_X                                         ");
   blk("  UAV_LANDING_TARGET_Q_Y, UAV_LANDING_TARGET_Q_Z                                         ");
+  blk("  PARDUBRIDGE_PASSIVE_STATE     // WAITING_FOR_SYSTEM, RECEIVING, etc.             ");
+  blk("  PARDUBRIDGE_PASSIVE_CONNECTED // 1 while the discovered MAVLink system is connected ");
   blk("  AUTOPILOT_MODE             // pArduBridge helm state, not raw FC mode ");
   blk("  CONTROL_AUTHORITY          // FC/manual or MOOS Helm ownership summary ");
   blk("  HELM_SETPOINT_FRESH        // 1 when all Helm setpoints are within timeout ");
