@@ -52,7 +52,7 @@ ProcessConfig = pArduBridge
 | `vehicle_type` or `vehicle` | Plane aliases: `plane`, `arduplane`, `fixedwing`, `fixed_wing`; Copter aliases: `copter`, `arducopter`, `multicopter` | Selects platform-specific behavior. The compatibility default is Plane; configure this explicitly. |
 | `vname` | nonempty string | Required vehicle/community identifier; normalized to lowercase. |
 | `vcolor` | color string | Marker color used for visualization. |
-| `prefix` | MOOS-variable prefix | Prefix for navigation publications such as `UAV_X`. |
+| `prefix` | MOOS-variable prefix | Prefix for all vehicle telemetry publications, such as `UAV_X`, `UAV_GPS_AGE`, and `UAV_LANDING_TARGET_X`. Defaults to `UAV`. |
 | `takeoff_altitude`, `default_altitude`, or `target_altitude` | positive meters AGL | Copter takeoff altitude and the default target altitude. Copter defaults to 10 m when omitted. |
 | `command_groundspeed` or `cmd_gs` | boolean | Also command groundspeed. Copter forces this true; Plane normally commands airspeed. |
 | `precision_loiter_enter_loiter` | boolean | Default true. If false, `PRECISION_LOITER` requires the FC to already be in native Loiter. |
@@ -80,7 +80,7 @@ url_protocol = tcp
 
 Set `passive=true` when an instance must observe a MAVLink stream without controlling the vehicle. Passive mode opens the transport immediately and remains alive while waiting for an autopilot heartbeat; telemetry subscriptions are installed when the system appears. It retains all existing telemetry publications, including `LANDING_TARGET`, but skips mission setup, parameter polling, telemetry-rate requests, the command sender, control-state publications, and all command-related MOOS registrations. MAVSDK may still transmit its ground-station heartbeat; passive mode guarantees that the bridge does not issue vehicle, mission, parameter, or message-rate commands.
 
-`PARDUBRIDGE_PASSIVE_STATE` reports `WAITING_FOR_SYSTEM`, `RECEIVING`, `SYSTEM_DISCONNECTED`, or `ERROR`; `PARDUBRIDGE_PASSIVE_CONNECTED` is 1 only while the discovered MAVLink system is connected. For strict MOOS isolation, run the passive instance in a separate community and share only the required telemetry variables outward.
+`PARDUBRIDGE_PASSIVE_STATE` reports `WAITING_FOR_SYSTEM`, `RECEIVING`, `SYSTEM_DISCONNECTED`, or `ERROR`; `PARDUBRIDGE_PASSIVE_CONNECTED` is 1 only while the discovered MAVLink system is connected. All vehicle telemetry families honor `prefix`, so a passive observer configured with `prefix=LANDMARK` publishes `LANDMARK_GPS_*`, `LANDMARK_HEALTH_*`, and `LANDMARK_LANDING_TARGET_*` without colliding with `UAV_*`. For strict MOOS isolation, run the passive instance in a separate community and share only the required telemetry variables outward.
 
 ## Control ownership
 
@@ -227,7 +227,7 @@ If `prefix=UAV`, the app publishes:
 | `UAV_ALTITUDE` | Relative altitude in meters. |
 | `UAV_DEPTH` | Negative relative altitude for MOOS compatibility. |
 
-### Unprefixed health, GPS, and policy variables
+### Health, GPS, and policy variables
 
 | Variable family | Variables |
 |---|---|
@@ -246,7 +246,7 @@ Landed states are `UNKNOWN`, `ON_GROUND`, `IN_AIR`, `TAKING_OFF`, and `LANDING`.
 
 ### Coordination and visualization
 
-The app also publishes `AUTOPILOT_MODE`, `MOOS_MANUAL_OVERRIDE`, `RETURN_UPDATE`, `TOWAYPT_UPDATE`, `SURVEY_UPDATE`, `CONST_ALTITUDE_UPDATE`, and `VIEW_*` markers/vectors.
+The configured prefix applies to every vehicle telemetry and command-result variable listed above. Coordination variables remain unprefixed: `AUTOPILOT_MODE`, `MOOS_MANUAL_OVERRIDE`, `RETURN_UPDATE`, `TOWAYPT_UPDATE`, `SURVEY_UPDATE`, `CONST_ALTITUDE_UPDATE`, and `VIEW_*` markers/vectors.
 
 ## Verification status
 

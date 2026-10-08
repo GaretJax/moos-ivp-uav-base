@@ -1750,61 +1750,61 @@ void ArduBridge::postHealthUpdate()
     Notify(key, value ? 1.0 : 0.0, m_curr_time);
   };
 
-  postBool("UAV_HEALTH_AVAILABLE", m_uav_model.hasHealthTelemetry());
-  postBool("UAV_IS_ARMED", m_uav_model.isArmed());
-  postBool("UAV_HEALTH_GYRO", health.is_gyrometer_calibration_ok);
-  postBool("UAV_HEALTH_ACCEL", health.is_accelerometer_calibration_ok);
-  postBool("UAV_HEALTH_MAG", health.is_magnetometer_calibration_ok);
-  postBool("UAV_HEALTH_LOCAL_POSITION", health.is_local_position_ok);
-  postBool("UAV_HEALTH_GLOBAL_POSITION", health.is_global_position_ok);
-  postBool("UAV_HEALTH_HOME_POSITION", health.is_home_position_ok);
-  postBool("UAV_IS_ARMABLE", health.is_armable);
-  postBool("UAV_HEALTH_ALL_OK", m_uav_model.isHealthy());
+  postBool(m_uav_prefix + "_HEALTH_AVAILABLE", m_uav_model.hasHealthTelemetry());
+  postBool(m_uav_prefix + "_IS_ARMED", m_uav_model.isArmed());
+  postBool(m_uav_prefix + "_HEALTH_GYRO", health.is_gyrometer_calibration_ok);
+  postBool(m_uav_prefix + "_HEALTH_ACCEL", health.is_accelerometer_calibration_ok);
+  postBool(m_uav_prefix + "_HEALTH_MAG", health.is_magnetometer_calibration_ok);
+  postBool(m_uav_prefix + "_HEALTH_LOCAL_POSITION", health.is_local_position_ok);
+  postBool(m_uav_prefix + "_HEALTH_GLOBAL_POSITION", health.is_global_position_ok);
+  postBool(m_uav_prefix + "_HEALTH_HOME_POSITION", health.is_home_position_ok);
+  postBool(m_uav_prefix + "_IS_ARMABLE", health.is_armable);
+  postBool(m_uav_prefix + "_HEALTH_ALL_OK", m_uav_model.isHealthy());
   if (m_uav_model.hasHealthTelemetry())
-    Notify("UAV_HEALTH_AGE", m_uav_model.getHealthTelemetryAge(), m_curr_time);
+    Notify(m_uav_prefix + "_HEALTH_AGE", m_uav_model.getHealthTelemetryAge(), m_curr_time);
 
   const bool battery_available = m_uav_model.hasBatteryTelemetry();
   const bool battery_valid = m_uav_model.hasValidBatteryTelemetry();
-  postBool("UAV_BATTERY_DATA_VALID", battery_valid);
+  postBool(m_uav_prefix + "_BATTERY_DATA_VALID", battery_valid);
   if (battery_available)
   {
     const auto battery = m_uav_model.getBattery();
-    Notify("UAV_BATTERY_DATA_AGE", m_uav_model.getBatteryTelemetryAge(), m_curr_time);
+    Notify(m_uav_prefix + "_BATTERY_DATA_AGE", m_uav_model.getBatteryTelemetryAge(), m_curr_time);
     if (std::isfinite(battery.remaining_percent))
-      Notify("UAV_BATTERY_SOC", battery.remaining_percent, m_curr_time);
+      Notify(m_uav_prefix + "_BATTERY_SOC", battery.remaining_percent, m_curr_time);
     if (std::isfinite(battery.voltage_v))
-      Notify("UAV_BATTERY_VOLTAGE", battery.voltage_v, m_curr_time);
+      Notify(m_uav_prefix + "_BATTERY_VOLTAGE", battery.voltage_v, m_curr_time);
   }
 
   const auto arm_policy = m_uav_model.getArmPolicyDecision();
   const auto disarm_policy = m_uav_model.getDisarmPolicyDecision();
   const auto land_policy = m_uav_model.getLandPolicyDecision();
-  postBool("UAV_ARM_POLICY_READY", arm_policy.action == UAV_Model::PolicyAction::Submit);
-  Notify("UAV_ARM_POLICY_REASON", arm_policy.reason, m_curr_time);
-  postBool("UAV_DISARM_POLICY_READY", disarm_policy.action == UAV_Model::PolicyAction::Submit);
-  Notify("UAV_DISARM_POLICY_REASON", disarm_policy.reason, m_curr_time);
-  postBool("UAV_LAND_POLICY_READY", land_policy.action == UAV_Model::PolicyAction::Submit);
-  Notify("UAV_LAND_POLICY_REASON", land_policy.reason, m_curr_time);
+  postBool(m_uav_prefix + "_ARM_POLICY_READY", arm_policy.action == UAV_Model::PolicyAction::Submit);
+  Notify(m_uav_prefix + "_ARM_POLICY_REASON", arm_policy.reason, m_curr_time);
+  postBool(m_uav_prefix + "_DISARM_POLICY_READY", disarm_policy.action == UAV_Model::PolicyAction::Submit);
+  Notify(m_uav_prefix + "_DISARM_POLICY_REASON", disarm_policy.reason, m_curr_time);
+  postBool(m_uav_prefix + "_LAND_POLICY_READY", land_policy.action == UAV_Model::PolicyAction::Submit);
+  Notify(m_uav_prefix + "_LAND_POLICY_REASON", land_policy.reason, m_curr_time);
 
   const bool gps_available = m_uav_model.hasGpsTelemetry();
-  postBool("UAV_GPS_AVAILABLE", gps_available);
+  postBool(m_uav_prefix + "_GPS_AVAILABLE", gps_available);
   if (gps_available)
   {
     const auto gps_info = m_uav_model.getGpsInfo();
     const auto raw_gps = m_uav_model.getRawGps();
-    Notify("UAV_GPS_FIX_TYPE", static_cast<double>(gps_info.fix_type), m_curr_time);
-    Notify("UAV_GPS_SATELLITES", static_cast<double>(gps_info.num_satellites), m_curr_time);
-    Notify("UAV_GPS_HDOP", static_cast<double>(raw_gps.hdop), m_curr_time);
-    Notify("UAV_GPS_VDOP", static_cast<double>(raw_gps.vdop), m_curr_time);
-    Notify("UAV_GPS_AGE", m_uav_model.getGpsTelemetryAge(), m_curr_time);
+    Notify(m_uav_prefix + "_GPS_FIX_TYPE", static_cast<double>(gps_info.fix_type), m_curr_time);
+    Notify(m_uav_prefix + "_GPS_SATELLITES", static_cast<double>(gps_info.num_satellites), m_curr_time);
+    Notify(m_uav_prefix + "_GPS_HDOP", static_cast<double>(raw_gps.hdop), m_curr_time);
+    Notify(m_uav_prefix + "_GPS_VDOP", static_cast<double>(raw_gps.vdop), m_curr_time);
+    Notify(m_uav_prefix + "_GPS_AGE", m_uav_model.getGpsTelemetryAge(), m_curr_time);
   }
 
   const bool landed_state_available = m_uav_model.hasLandedStateTelemetry();
-  postBool("UAV_LANDED_STATE_AVAILABLE", landed_state_available);
+  postBool(m_uav_prefix + "_LANDED_STATE_AVAILABLE", landed_state_available);
   if (landed_state_available)
   {
-    Notify("UAV_LANDED_STATE", UAV_Model::landedStateToString(m_uav_model.getLandedState()), m_curr_time);
-    Notify("UAV_LANDED_STATE_AGE", m_uav_model.getLandedStateTelemetryAge(), m_curr_time);
+    Notify(m_uav_prefix + "_LANDED_STATE", UAV_Model::landedStateToString(m_uav_model.getLandedState()), m_curr_time);
+    Notify(m_uav_prefix + "_LANDED_STATE_AGE", m_uav_model.getLandedStateTelemetryAge(), m_curr_time);
   }
 }
 
@@ -1814,33 +1814,33 @@ void ArduBridge::postHealthUpdate()
 void ArduBridge::postLandingTargetUpdate()
 {
   const bool received = m_uav_model.hasLandingTargetTelemetry();
-  Notify("UAV_LANDING_TARGET_AVAILABLE",
+  Notify(m_uav_prefix + "_LANDING_TARGET_AVAILABLE",
          m_uav_model.hasFreshLandingTargetTelemetry() ? 1.0 : 0.0,
          m_curr_time);
   if (!received)
     return;
 
   const auto target = m_uav_model.getLandingTargetTelemetry();
-  Notify("UAV_LANDING_TARGET_AGE", m_uav_model.getLandingTargetTelemetryAge(), m_curr_time);
-  Notify("UAV_LANDING_TARGET_TIME_USEC", static_cast<double>(target.time_usec), m_curr_time);
-  Notify("UAV_LANDING_TARGET_SYSTEM_ID", static_cast<double>(target.source_system), m_curr_time);
-  Notify("UAV_LANDING_TARGET_COMPONENT_ID", static_cast<double>(target.source_component), m_curr_time);
-  Notify("UAV_LANDING_TARGET_TARGET_NUM", static_cast<double>(target.target_num), m_curr_time);
-  Notify("UAV_LANDING_TARGET_FRAME", static_cast<double>(target.frame), m_curr_time);
-  Notify("UAV_LANDING_TARGET_TYPE", static_cast<double>(target.target_type), m_curr_time);
-  Notify("UAV_LANDING_TARGET_POSITION_VALID", target.position_valid ? 1.0 : 0.0, m_curr_time);
-  Notify("UAV_LANDING_TARGET_ANGLE_X", static_cast<double>(target.angle_x_rad), m_curr_time);
-  Notify("UAV_LANDING_TARGET_ANGLE_Y", static_cast<double>(target.angle_y_rad), m_curr_time);
-  Notify("UAV_LANDING_TARGET_DISTANCE", static_cast<double>(target.distance_m), m_curr_time);
-  Notify("UAV_LANDING_TARGET_SIZE_X", static_cast<double>(target.size_x_rad), m_curr_time);
-  Notify("UAV_LANDING_TARGET_SIZE_Y", static_cast<double>(target.size_y_rad), m_curr_time);
-  Notify("UAV_LANDING_TARGET_X", static_cast<double>(target.x_m), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Y", static_cast<double>(target.y_m), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Z", static_cast<double>(target.z_m), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Q_W", static_cast<double>(target.q_w), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Q_X", static_cast<double>(target.q_x), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Q_Y", static_cast<double>(target.q_y), m_curr_time);
-  Notify("UAV_LANDING_TARGET_Q_Z", static_cast<double>(target.q_z), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_AGE", m_uav_model.getLandingTargetTelemetryAge(), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_TIME_USEC", static_cast<double>(target.time_usec), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_SYSTEM_ID", static_cast<double>(target.source_system), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_COMPONENT_ID", static_cast<double>(target.source_component), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_TARGET_NUM", static_cast<double>(target.target_num), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_FRAME", static_cast<double>(target.frame), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_TYPE", static_cast<double>(target.target_type), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_POSITION_VALID", target.position_valid ? 1.0 : 0.0, m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_ANGLE_X", static_cast<double>(target.angle_x_rad), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_ANGLE_Y", static_cast<double>(target.angle_y_rad), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_DISTANCE", static_cast<double>(target.distance_m), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_SIZE_X", static_cast<double>(target.size_x_rad), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_SIZE_Y", static_cast<double>(target.size_y_rad), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_X", static_cast<double>(target.x_m), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Y", static_cast<double>(target.y_m), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Z", static_cast<double>(target.z_m), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Q_W", static_cast<double>(target.q_w), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Q_X", static_cast<double>(target.q_x), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Q_Y", static_cast<double>(target.q_y), m_curr_time);
+  Notify(m_uav_prefix + "_LANDING_TARGET_Q_Z", static_cast<double>(target.q_z), m_curr_time);
 }
 
 //---------------------------------------------------------
@@ -1872,7 +1872,7 @@ void ArduBridge::postCommandResult()
                           ",command=" + result.command +
                           ",status=" + result.status +
                           ",detail=" + detail;
-  Notify("UAV_COMMAND_RESULT", m_last_command_result, m_curr_time);
+  Notify(m_uav_prefix + "_COMMAND_RESULT", m_last_command_result, m_curr_time);
 }
 
 void ArduBridge::postSpeedUpdateToBehaviors(double speed)
