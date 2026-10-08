@@ -6,6 +6,7 @@
 INVOCATION_ABS_DIR="$(pwd)"
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 MAVSDK_INSTALL_PREFIX="${PROJECT_ROOT}/MAVSDK/build/default/install"
+MOOSIVP_SWARM_TREE_BASE="${MOOSIVP_SWARM_TREE_BASE:-${HOME}/moos-ivp-swarm}"
 BUILD_TYPE="None"
 CMD_LINE_ARGS=""
 BUILD_BOT_CODE_ONLY="OFF"
@@ -27,6 +28,7 @@ for ARGI; do
 	echo "    Only build minimal robot apps           "
 	echo "  --noswarm                                 "
 	echo "    Skip apps derived from the SWARM Toolbox"
+	echo "    (also skipped when the toolbox is unavailable)"
 	echo "  --minrobotx, -mx                          "
 	echo "    Override min-robot default on Raspbian  "
 	echo "  --release, -r                             "
@@ -53,10 +55,20 @@ for ARGI; do
     fi
 done
 
+# The SWARM-derived targets cannot compile without IvPTaskBehavior.h. Treat
+# that toolbox as optional so a default build works on a base installation.
+if [ "${BUILD_SWARM_TOOLBOX_DERIVATIVES}" = "ON" ]; then
+    SWARM_TASK_HEADER="$(find "${MOOSIVP_SWARM_TREE_BASE}/src" \
+        -type f -name IvPTaskBehavior.h -print -quit 2>/dev/null)"
+    if [ -z "${SWARM_TASK_HEADER}" ]; then
+        echo "SWARM Toolbox not found at ${MOOSIVP_SWARM_TREE_BASE};"
+        echo "skipping SWARM-derived targets."
+        BUILD_SWARM_TOOLBOX_DERIVATIVES="OFF"
+    fi
+fi
 
 
-
-#-------------------------------------------------------------- 
+#--------------------------------------------------------------
 #  Part 2: If this is Odroid and minrobot not selected, and
 #          no explicit override given with -mx, CONFIRM first
 # 		   Check if the alias 'WhichOdroid' exists
@@ -114,6 +126,7 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS}"              \
       -DBUILD_BOT_CODE_ONLY=${BUILD_BOT_CODE_ONLY}        \
       -DBUILD_SWARM_TOOLBOX_DERIVATIVES=${BUILD_SWARM_TOOLBOX_DERIVATIVES} \
+      -DMOOSIVP_SWARM_TREE_BASE:PATH="${MOOSIVP_SWARM_TREE_BASE}" \
       -DMAVSDK_DIR:PATH="${MAVSDK_CMAKE_DIR}" "${PROJECT_ROOT}" || exit 1
 
 make ${CMD_LINE_ARGS} || exit 1

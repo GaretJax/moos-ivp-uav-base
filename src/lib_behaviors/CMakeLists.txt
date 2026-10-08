@@ -27,14 +27,7 @@ ADD_LIBRARY(BHV_ConstantAltitude SHARED
    BHV_ConstantAltitude.cpp)
 
 TARGET_LINK_LIBRARIES(BHV_ConstantAltitude
-   helmivp
-   behaviors 
-   ivpbuild 
-   logic 
-   ivpcore 
-   bhvutil 
-   mbutil 
-   geometry 
+   "$<LINK_GROUP:RESCAN,helmivp,behaviors,ivpbuild,logic,ivpcore,bhvutil,mbutil,geometry>"
    ${SYSTEM_LIBS}
 )
 
@@ -45,13 +38,5 @@ TARGET_LINK_LIBRARIES(BHV_ConstantAltitude
 ADD_LIBRARY(BHV_Voronoi_uav SHARED 
    BHV_Voronoi_uav.cpp )
 TARGET_LINK_LIBRARIES(BHV_Voronoi_uav
-   ufield
-   helmivp
-   behaviors 
-   ivpbuild 
-   logic 
-   ivpcore 
-   bhvutil 
-   mbutil 
-   geometry 
+   "$<LINK_GROUP:RESCAN,ufield,helmivp,behaviors,ivpbuild,logic,ivpcore,bhvutil,mbutil,geometry>"
    ${SYSTEM_LIBS} )

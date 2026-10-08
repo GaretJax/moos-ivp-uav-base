@@ -148,7 +148,8 @@ with those targets disabled:
 ./build.sh --noswarm
 ```
 
-This excludes `lib_bhv_task_refuel_replace_target`,
+`build.sh` also disables these targets automatically when the SWARM Toolbox is
+not installed. This excludes `lib_bhv_task_refuel_replace_target`,
 `lib_bhv_task_refuel_replace_basic`, and `pProxonoi_uav`.
 
 ---
