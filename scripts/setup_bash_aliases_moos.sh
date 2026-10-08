@@ -140,17 +140,11 @@ alias ip_fw_o='sudo /usr/local/bin/setup_nat_ip_forwarding.sh'
 ###################### MAVSDK - START #########################################
 
 
-alias mavsdk_configure_build_install="cd ~/moos-ivp-uav-base/MAVSDK;
-                                        cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Debug -Bbuild/default -H. -DBUILD_SHARED_LIBS=ON -DSUPERBUILD=ON -DBUILD_TESTS=OFF; 
-                                        sudo cmake --build build/default --target install;
-                                        cd -"
-alias mavsdk_build_install="cd ~/moos-ivp-uav-base/MAVSDK;
-                            sudo cmake --build build/default --target install;
-                            cd -"   
+alias mavsdk_configure_build_install='cduav; ./build-mavlink.sh; cd -'
+alias mavsdk_build_install='cduav; ./build-mavlink.sh; cd -'
 
-alias bldm='sudo .;
-            mavsdk_build_install;
-            bld; 
+alias bldm='mavsdk_build_install;
+            bld;
             cd ~/moos-ivp-uav-base/scripts;
             ./merge_compile_commands.sh;
             cd -'

@@ -12,7 +12,8 @@ FILE(GLOB LOCAL_LIBRARY_DIRS ./lib_*)
 INCLUDE_DIRECTORIES(${LOCAL_LIBRARY_DIRS})
 
 
-# Finds MAVSDK when installed system wide.
+# build.sh points this lookup at the project-local MAVSDK installation created
+# by build-mavlink.sh.
 find_package(MAVSDK REQUIRED)
 
 # Find the MOOSGeodesy library

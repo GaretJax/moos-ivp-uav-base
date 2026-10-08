@@ -3,7 +3,9 @@
 #--------------------------------------------------------------
 # Set Global variables                               
 #-------------------------------------------------------------- 
-INVOCATION_ABS_DIR=`pwd`
+INVOCATION_ABS_DIR="$(pwd)"
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+MAVSDK_INSTALL_PREFIX="${PROJECT_ROOT}/MAVSDK/build/default/install"
 BUILD_TYPE="None"
 CMD_LINE_ARGS=""
 BUILD_BOT_CODE_ONLY="OFF"
@@ -84,19 +86,36 @@ CMAKE_CXX_FLAGS+="-Wno-reorder "
 CMAKE_CXX_FLAGS+="-Wno-cast-function-type "
 CMAKE_CXX_FLAGS+="-Wno-cast-function-type "
 
-#-------------------------------------------------------------- 
-#  Part 4: Invoke the call to make in the build directory
-#-------------------------------------------------------------- 
+#--------------------------------------------------------------
+#  Part 4: Locate the project-local MAVSDK installation
+#--------------------------------------------------------------
 
-mkdir -p build
-cd build
+MAVSDK_CONFIG_FILE="$(find "${MAVSDK_INSTALL_PREFIX}" \
+    -type f -path '*/cmake/MAVSDK/MAVSDKConfig.cmake' -print -quit 2>/dev/null)"
+
+if [ -z "${MAVSDK_CONFIG_FILE}" ]; then
+    echo "MAVSDK is not installed in the project-local prefix:"
+    echo "  ${MAVSDK_INSTALL_PREFIX}"
+    echo "Run ${PROJECT_ROOT}/build-mavlink.sh first."
+    exit 1
+fi
+
+MAVSDK_CMAKE_DIR="$(dirname "${MAVSDK_CONFIG_FILE}")"
+
+#--------------------------------------------------------------
+#  Part 5: Invoke the call to make in the build directory
+#--------------------------------------------------------------
+
+mkdir -p "${PROJECT_ROOT}/build"
+cd "${PROJECT_ROOT}/build" || exit 1
 
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE}                    \
       -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS}"              \
       -DBUILD_BOT_CODE_ONLY=${BUILD_BOT_CODE_ONLY}        \
-      -DBUILD_SWARM_TOOLBOX_DERIVATIVES=${BUILD_SWARM_TOOLBOX_DERIVATIVES}  ../  || exit 1
+      -DBUILD_SWARM_TOOLBOX_DERIVATIVES=${BUILD_SWARM_TOOLBOX_DERIVATIVES} \
+      -DMAVSDK_DIR:PATH="${MAVSDK_CMAKE_DIR}" "${PROJECT_ROOT}" || exit 1
 
-make ${CMD_LINE_ARGS}
-cd ${INVOCATION_ABS_DIR}
+make ${CMD_LINE_ARGS} || exit 1
+cd "${INVOCATION_ABS_DIR}" || exit 1
 

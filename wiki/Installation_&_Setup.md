@@ -232,11 +232,19 @@ Configuration details in ArduPilot & MavProx.
 
 ## MAVSDK Installation
 
-Location: `~/MAVSDK/`
+MAVSDK is included in this repository as the `MAVSDK/` submodule.
 
 **This step is required for both simulation approaches** when interfacing with ArduPilot (either in simulation or on hardware).
 
-Follow MAVSDK setup instructions or use the `mavsdk_build_install` alias in `scripts/setup_bash_aliases_moos.sh`. See: **[MAVSDK Setup & Usage.md](MAVSDK_Setup_&_Usage.md)**
+Build and install MAVSDK into its project-local prefix, then build this project:
+
+```bash
+./build-mavlink.sh
+./build.sh
+```
+
+Neither command requires `sudo`, and `build.sh` locates the local MAVSDK
+installation automatically. See: **[MAVSDK Setup & Usage.md](MAVSDK_Setup_&_Usage.md)**
 
 ---
 

@@ -34,48 +34,33 @@ Read instructions [Installation_&_Setup](Installation_&_Setup.md)
 
 [Official guide](https://mavsdk.mavlink.io/main/en/cpp/guide/build.html)
 
-- *Configuration step*
-		- In folder `~/MAVSDK/`run:
-	
-	`cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Debug -Bbuild/default -H. -DBUILD_SHARED_LIBS=ON` 
-	
-	The first flag `-DCMAKE_EXPORT_COMPILE_COMMANDS=1` is to generate a `compile_command.json` for IntelliSense Configuration in vscode 
-	- If not restricted by memory/compute consider including:
-	
-			-DASAN=ON -DUBSAN=ON -DLSAN=ON
-	- *Build step*
-	
-			cmake --build build/default -j16
+From the `moos-ivp-uav-base` repository root, run:
 
-		- Install system wide
-			
-				sudo cmake --build build/default --target install
-
-
-Summary: 
-```
-cd <path-to>/MAVSDK;
-cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Debug -Bbuild/default -H. -DBUILD_SHARED_LIBS=ON -DSUPERBUILD=ON;
-sudo cmake --build build/default --target install;
-cd -
+```bash
+./build-mavlink.sh
+./build.sh
 ```
 
-Flag info can be found in the official guide
+`build-mavlink.sh` configures and builds the included MAVSDK submodule, including
+its MAVLink dependency, and installs it into the project-local prefix
+`MAVSDK/build/default/install`. It does not use `sudo` or modify `/usr/local`.
+`build.sh` locates that prefix automatically, so no additional CMake options or
+environment variables are required.
+
+The MAVSDK build defaults to `Debug`. It can be overridden when necessary with
+the `MAVSDK_BUILD_TYPE` environment variable, for example:
+
+```bash
+MAVSDK_BUILD_TYPE=Release ./build-mavlink.sh
+```
 
 
 
 ### Alias (Optional - For VSCode Development)
 
-This alias is useful if you're developing MAVSDK applications in VSCode and need IntelliSense support. It builds apps in moos and updates the compile_commands from this repo and submodule MAVSDK for VSCode to locate the apps.
-
-```
-alias bldm='sudo .;
-			bld;
-			mavsdk_build_install;
-			cd ~/moos-ivp-uav-base/scripts;
-			./merge_compile_commands.sh;
-			cd -'
-```
+The aliases in `scripts/setup_bash_aliases_moos.sh` call the same local build
+script. The `bldm` alias builds MAVSDK, builds this project, and merges the
+compile command databases for editor tooling; it does not require `sudo`.
 
 
 ### Building an example/app (Optional - For Learning MAVSDK)
