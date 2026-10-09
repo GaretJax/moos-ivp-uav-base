@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
     std::cout << "This is a test log entry." << std::endl;
 
     
-    ArduBridge.Run(run_command.c_str(), mission_file.c_str());
+    const bool success = ArduBridge.Run(run_command.c_str(), mission_file.c_str());
 
-    return(0);
+    return success ? 0 : 1;
 }

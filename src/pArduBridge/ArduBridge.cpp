@@ -96,6 +96,9 @@ ArduBridge::ArduBridge()
 
 ArduBridge::~ArduBridge()
 {
+  // Stop asynchronous mail callbacks before CMOOSApp destroys its mail event.
+  // Otherwise a failed OnStartUp can abort in a callback during destruction.
+  m_Comms.Close();
 }
 
 //---------------------------------------------------------
@@ -1196,13 +1199,17 @@ bool ArduBridge::OnStartUp()
       std::cout << "Invalid ArduPilot URL specified - Need to restart with a valid URL" << std::endl;
       Logger::error("Invalid ArduPilot URL specified - Need to restart with a valid URL");
     }
+    // No plugins exist without a valid connection; mission setup would dereference them.
+    return (false);
   }
   else
   {
     // Connect to autopilot
     if (!m_uav_model.connectToUAV(ardupilot_url, m_passive))
     {
-      std::cout << "Failed to connect to ArduPilot" << std::endl;
+      std::cerr << "Failed to connect to ArduPilot at " << ardupilot_url
+                << ". Start SITL (launch_sitl.sh) or verify the hardware endpoint "
+                   "before launching pArduBridge." << std::endl;
       return (false);
     }
   }

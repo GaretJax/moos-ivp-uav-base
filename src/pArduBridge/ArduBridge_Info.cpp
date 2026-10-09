@@ -6,10 +6,8 @@
 /************************************************************/
 
 #include <cstdlib>
-#include <iostream>
 #include "ArduBridge_Info.h"
 #include "ColorParse.h"
-#include "ReleaseInfo.h"
 
 using namespace std;
 
