@@ -247,6 +247,7 @@ private: // State variables
   bool m_passive;
   bool m_command_groundSpeed;
   bool m_precision_loiter_enter_loiter;
+  bool m_show_loiter_visuals;
   double m_helm_setpoint_timeout;
   double m_last_health_post_time;
   double m_last_helm_setpoint_status_post_time;

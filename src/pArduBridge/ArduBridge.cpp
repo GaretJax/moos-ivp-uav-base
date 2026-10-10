@@ -49,6 +49,7 @@ ArduBridge::ArduBridge()
       m_passive{false},
       m_command_groundSpeed{false},
       m_precision_loiter_enter_loiter{true},
+      m_show_loiter_visuals{true},
       m_helm_setpoint_timeout{2.0},
       m_last_health_post_time{0},
       m_last_helm_setpoint_status_post_time{0},
@@ -1238,6 +1239,10 @@ bool ArduBridge::OnStartUp()
     {
       handled = setBooleanOnString(m_command_groundSpeed, value);
     }
+    else if (param == "show_loiter_visuals" && isBoolean(value))
+    {
+      handled = setBooleanOnString(m_show_loiter_visuals, value);
+    }
     else if (param == "precision_loiter_enter_loiter" && isBoolean(value))
     {
       handled = setBooleanOnString(m_precision_loiter_enter_loiter, value);
@@ -2235,7 +2240,8 @@ bool ArduBridge::visualizeHomeLocation()
 
 void ArduBridge::visualizeLoiterLocation(const XYPoint &loiter_coord, bool visualize)
 {
-
+  // Display only: remove the existing labeled marker without touching control.
+  visualize = visualize && m_show_loiter_visuals;
   XYPoint point = transformLatLonToXY(loiter_coord);
   if (point == XYPoint(0, 0) && visualize)
   {

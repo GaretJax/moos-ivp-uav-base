@@ -82,6 +82,7 @@ void showExampleConfigAndExit()
   blk("  helm_setpoint_timeout = 2      // Copter stale-setpoint hold (s)");
   blk("  guided_mode_timeout = 30       // ENTER_GUIDED retry timeout (MOOS s)");
   blk("  precision_loiter_enter_loiter = true // false requires FC Loiter already ");
+  blk("  show_loiter_visuals = true    // false suppresses bridge loiter markers ");
   blk("  command_groundspeed = true     // forced true for Copter       ");
   blk("  is_sim = false                 // Plane SITL mission setup only");
   blk("  geodesy = local_grid           // or utm, to match USE_UTM apps ");
