@@ -36,6 +36,19 @@ public:
 
   bool hasPending() const { return m_pending.has_value(); }
 
+  // Monitoring lease only: command acceptance comes from a real FC ACK.
+  // Do not let an unpolled/old transaction mask missing airborne guidance.
+  bool hasActiveAcknowledgement(Clock::time_point now = Clock::now(),
+                                double activation_timeout_s = 5.0,
+                                double completion_timeout_s = 60.0) const
+  {
+    if (!m_pending)
+      return false;
+    const double age_s = std::chrono::duration<double>(now - m_pending->accepted_at).count();
+    const double deadline_s = m_pending->confirmed ? completion_timeout_s : activation_timeout_s;
+    return age_s >= 0.0 && age_s < deadline_s;
+  }
+
   double targetAltitudeM() const
   {
     return m_pending ? m_pending->target_altitude_m : 0.0;

@@ -16,6 +16,7 @@
 #include "WarningSystem.h"
 #include "UAV_Model.h"
 #include "SetpointManager.h"
+#include "GuidedOwnershipMonitor.h"
 
 #include <map>
 #include <functional>
@@ -247,7 +248,7 @@ private: // State variables
   std::mutex m_command_results_mutex;
   std::string m_last_command_result;
 
-  double m_guided_parked_since;
+  GuidedOwnershipMonitor m_guided_ownership_monitor;
   double m_last_guided_hold_refresh_time;
   std::atomic<bool> m_helm_setpoint_timeout_detected;
   std::atomic<bool> m_helm_setpoint_timeout_latched;

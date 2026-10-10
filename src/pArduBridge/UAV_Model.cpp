@@ -1575,6 +1575,14 @@ uint64_t UAV_Model::reportCommandResult(const std::string &command,
   return command_id;
 }
 
+bool UAV_Model::hasAcknowledgedTakeoff() const
+{
+  std::lock_guard<std::mutex> lock(m_mode_confirmation_mutex);
+  return m_takeoff_confirmation_tracker.hasActiveAcknowledgement(
+      TakeoffConfirmationTracker::Clock::now(),
+      MODE_CONFIRMATION_TIMEOUT_S, TAKEOFF_COMPLETION_TIMEOUT_S);
+}
+
 void UAV_Model::pollCommandConfirmations()
 {
   ModeConfirmationTracker::Outcome rtl_outcome;

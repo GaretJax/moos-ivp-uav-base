@@ -227,6 +227,7 @@ public:
                                const std::string &detail,
                                uint64_t command_id = 0) const;
   void pollCommandConfirmations();
+  bool hasAcknowledgedTakeoff() const;
   bool isFlightControllerConnected() const
   {
     return m_system_ptr && m_system_ptr->is_connected();

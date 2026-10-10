@@ -51,7 +51,6 @@ ArduBridge::ArduBridge()
       m_last_health_post_time{0},
       m_last_helm_setpoint_status_post_time{0},
       m_last_command_result{"NONE"},
-      m_guided_parked_since{-1},
       m_last_guided_hold_refresh_time{-1},
       m_helm_setpoint_timeout_detected{false},
       m_helm_setpoint_timeout_latched{false},
@@ -451,9 +450,14 @@ bool ArduBridge::OnConnectToServer()
 
   if (!m_passive)
   {
-    m_warning_system_ptr->queue_monitorCondition("Copter is in Guided while the Helm is parked", [this]()
-                                                 { return m_uav_model.isCopter() && m_guided_parked_since >= 0 &&
-                                                          ((m_curr_time - m_guided_parked_since) > 2.0); });
+    m_warning_system_ptr->queue_monitorCondition(
+        "Copter Guided without a guidance owner: bridge Helm authority parked, no active acknowledged FC takeoff",
+        [this]() { return m_guided_ownership_monitor.state() == GuidedOwnershipMonitor::State::MissingOwner &&
+                          m_guided_ownership_monitor.warningDue(m_curr_time); });
+    m_warning_system_ptr->queue_monitorCondition(
+        "Cannot verify Guided control ownership: native landed-state telemetry unavailable/stale or FC disconnected (bridge Helm authority parked)",
+        [this]() { return m_guided_ownership_monitor.state() == GuidedOwnershipMonitor::State::TelemetryUncertain &&
+                          m_guided_ownership_monitor.warningDue(m_curr_time); });
 
     Notify("AUTOPILOT_MODE", helmModeToString(m_autopilot_mode), m_curr_time);
     Notify("CONTROL_AUTHORITY", controlAuthorityToString(m_autopilot_mode), m_curr_time);
@@ -1357,6 +1361,11 @@ bool ArduBridge::buildReport()
   m_msgs << "Simulation Mode: " << sim_mode << std::endl;
   m_msgs << "Control Authority: " << controlAuthorityToString(m_autopilot_mode) << std::endl;
   m_msgs << "Helm Mode: " << helmModeToString(m_autopilot_mode) << std::endl;
+  m_msgs << "Guided Ownership Monitor: "
+         << GuidedOwnershipMonitor::stateName(m_guided_ownership_monitor.state())
+         << "; warning: "
+         << boolToString(m_guided_ownership_monitor.warningDue(m_curr_time))
+         << " (unowned/uncertain grace: 2 MOOS s)" << std::endl;
   m_msgs << "-------------------------------------------" << std::endl;
 
   auto uav_isArmed = m_uav_model.isArmed();
@@ -2447,11 +2456,6 @@ void ArduBridge::goToHelmMode(AutopilotHelmMode to_state, bool fromGCS)
     if (isHelmCommanding() && !fromGCS)
       m_warning_system_ptr->queue_monitorWarningForXseconds("Helm parked unexpectedly while commanding", WARNING_DURATION);
   }
-  else if (from_state == AutopilotHelmMode::HELM_PARKED)
-  {
-    m_guided_parked_since = -1;
-  }
-
   m_autopilot_mode = to_state;
   Notify("CONTROL_AUTHORITY", controlAuthorityToString(to_state));
 
@@ -2513,17 +2517,28 @@ std::string ArduBridge::controlAuthorityToString(AutopilotHelmMode state) const
 
 void ArduBridge::updateControlAuthorityMonitoring()
 {
-  const bool guided_while_parked = m_uav_model.isCopter() && m_uav_model.isGuidedMode() &&
-                                   (m_autopilot_mode == AutopilotHelmMode::HELM_PARKED);
-  if (guided_while_parked)
-  {
-    if (m_guided_parked_since < 0)
-      m_guided_parked_since = m_curr_time;
-  }
-  else
-  {
-    m_guided_parked_since = -1;
-  }
+  const auto landed = m_uav_model.getLandedState();
+  const double age_s = m_uav_model.getLandedStateTelemetryAge();
+  GuidedOwnershipMonitor::Inputs inputs;
+  inputs.copter = m_uav_model.isCopter();
+  inputs.guided = m_uav_model.isGuidedMode();
+  inputs.bridge_parked = m_autopilot_mode == AutopilotHelmMode::HELM_PARKED;
+  inputs.connected = m_uav_model.isFlightControllerConnected();
+  inputs.armed = m_uav_model.isArmed();
+  inputs.landed_fresh = m_uav_model.hasLandedStateTelemetry() &&
+                        std::isfinite(age_s) && age_s >= 0.0 && age_s <= 2.0 &&
+                        landed != mavsdk::Telemetry::LandedState::Unknown;
+  inputs.on_ground = landed == mavsdk::Telemetry::LandedState::OnGround;
+  inputs.taking_off_or_in_air = landed == mavsdk::Telemetry::LandedState::TakingOff ||
+                               landed == mavsdk::Telemetry::LandedState::InAir;
+  // Iterate polls confirmations first: completion, abort and timeout revoke
+  // the lease before monitoring. The getter also bounds an unpolled lease.
+  inputs.takeoff_ack_active = m_uav_model.hasAcknowledgedTakeoff();
+  m_guided_ownership_monitor.update(inputs, m_curr_time);
+  Notify(m_uav_prefix + "_GUIDED_OWNERSHIP_STATE",
+         GuidedOwnershipMonitor::stateName(m_guided_ownership_monitor.state()));
+  Notify(m_uav_prefix + "_GUIDED_OWNERSHIP_WARNING",
+         m_guided_ownership_monitor.warningDue(m_curr_time) ? 1.0 : 0.0);
 }
 
 void ArduBridge::initializeStateTransitionFunctions()

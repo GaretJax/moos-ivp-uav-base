@@ -189,6 +189,9 @@ void showInterfaceAndExit()
   blk("  PARDUBRIDGE_PASSIVE_CONNECTED // 1 while the discovered MAVLink system is connected ");
   blk("  AUTOPILOT_MODE             // pArduBridge helm state, not raw FC mode ");
   blk("  CONTROL_AUTHORITY          // FC/manual or MOOS Helm ownership summary ");
+  blk("  UAV_GUIDED_OWNERSHIP_STATE // GROUNDED_DISARMED, FC_TAKEOFF_ACKNOWLEDGED, ");
+  blk("                             // MISSING_OWNER, TELEMETRY_UNCERTAIN, NOT_APPLICABLE ");
+  blk("  UAV_GUIDED_OWNERSHIP_WARNING // 1 after unowned/uncertain grace of 2 MOOS s ");
   blk("  HELM_SETPOINT_FRESH        // 1 when all Helm setpoints are within timeout ");
   blk("  HELM_SETPOINT_AGE          // Age of oldest Helm setpoint; -1 until complete ");
   blk("  HELM_SETPOINT_TIMEOUT_LATCHED // 1 until a fresh confirmed route handoff ");
