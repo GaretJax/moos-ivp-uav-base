@@ -84,6 +84,7 @@ void showExampleConfigAndExit()
   blk("  precision_loiter_enter_loiter = true // false requires FC Loiter already ");
   blk("  show_loiter_visuals = true    // false suppresses bridge loiter markers ");
   blk("  command_groundspeed = true     // forced true for Copter       ");
+  blk("  require_verified_rally = false // true blocks ARM until rally readback ");
   blk("  is_sim = false                 // Plane SITL mission setup only");
   blk("  geodesy = local_grid           // or utm, to match USE_UTM apps ");
   blk("  logger = false                                               ");
@@ -123,6 +124,10 @@ void showInterfaceAndExit()
   blk("  HELM_STATUS, AUTOPILOT_MODE, MOOS_MANUAL_OVERRIDE            ");
   blk("  CHANGE_SPEED, CHANGE_COURSE, CHANGE_ALTITUDE, DEAD_MAN_POST_INTERRUPT ");
   blk("  SITL_SPEEDUP = 1..100        // Simulation-only SIM_SPEEDUP parameter   ");
+  blk("  RALLY_UPLOAD = id=...#x=...#y=...#altitude=... (whole m above Home)     ");
+  blk("    Grounded/disarmed only; single rally, RTL altitude, no closer Home. ");
+  blk("    Publishes PREFIX_RALLY_RESULT/STATE/ID/READY after ACK/readback.    ");
+  blk("    Config require_verified_rally=true blocks ARM until verified.    ");
   blk("  Compatibility registrations: FLY_WAYPOINT, DO_TAKEOFF, LOITER, ");
   blk("    SURVEY, RESET_SPEED_MIN, VIZ_HOME (use ARDU_COMMAND path)   ");
   blk("                                                                ");
@@ -164,6 +169,8 @@ void showInterfaceAndExit()
   blk("  UAV_LAND_POLICY_READY      // 1 when mode policy permits a new LAND submission       ");
   blk("  UAV_LAND_POLICY_REASON     // Stable reason token; all unlisted modes are denied      ");
   blk("  UAV_COMMAND_RESULT         // Every ARDU_COMMAND reports an outcome; takeoff adds COMPLETED ");
+  blk("  UAV_RALLY_RESULT, UAV_RALLY_STATE // Transaction status and verification detail ");
+  blk("  UAV_RALLY_ID, UAV_RALLY_READY // Active transaction and connection-sensitive readiness ");
   blk("  UAV_BRAKE_HOLD_PHASE, UAV_BRAKE_HOLD_REASON // Route BRAKE_AND_HOLD progress/blockers ");
   blk("  UAV_BRAKE_HOLD_SPEED, UAV_BRAKE_HOLD_MOTION_AGE // Native horizontal m/s, real receive s ");
   blk("  UAV_BRAKE_HOLD_SAMPLES, UAV_BRAKE_HOLD_ID // Distinct stopped FC frames, transaction ID ");

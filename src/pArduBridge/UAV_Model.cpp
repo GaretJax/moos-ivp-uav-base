@@ -539,7 +539,11 @@ UAV_Model::ArmDisarmPolicyInputs UAV_Model::getArmDisarmPolicyInputs() const
 
 UAV_Model::PolicyDecision UAV_Model::getArmPolicyDecision() const
 {
-  return evaluateArmPolicy(getArmDisarmPolicyInputs());
+  const auto decision = evaluateArmPolicy(getArmDisarmPolicyInputs());
+  if (decision.action == PolicyAction::Submit && m_require_rally &&
+      !rallyReady())
+    return {PolicyAction::Reject, "RALLY_NOT_VERIFIED"};
+  return decision;
 }
 
 UAV_Model::PolicyDecision UAV_Model::getDisarmPolicyDecision() const
@@ -1215,6 +1219,151 @@ bool UAV_Model::commandFlightControllerLoiterAsync(const CommandCompletion &comp
       completion(true, "SUCCESS"); });
 
   return true;
+}
+
+bool UAV_Model::rallyReady() const
+{
+  return m_system_ptr && m_system_ptr->is_connected() &&
+         mts_rally.get().state == "READY";
+}
+
+bool UAV_Model::requestRallyUpload(const RallyPoint &point)
+{
+  if (point.id.empty() || !std::isfinite(point.latitude) ||
+      fabs(point.latitude) > 90 || !std::isfinite(point.longitude) ||
+      fabs(point.longitude) > 180 ||
+      !std::isfinite(point.altitude_above_home) ||
+      point.altitude_above_home < 1 || point.altitude_above_home > 1000 ||
+      floor(point.altitude_above_home) != point.altitude_above_home ||
+      !m_system_ptr || !m_system_ptr->is_connected() || !m_mission_raw_ptr ||
+      !m_param_ptr || isArmed() || !hasLandedStateTelemetry() ||
+      getLandedStateTelemetryAge() > LANDED_STATE_TELEMETRY_MAX_AGE_S ||
+      getLandedState() != mavsdk::Telemetry::LandedState::OnGround)
+    return false;
+  const auto current = mts_rally.get();
+  if (current.point.id == point.id)
+    return true;
+  if (current.state == "UPLOADING")
+    return false;
+  mts_rally.set({point, "UPLOADING", "awaiting_mavlink_ack_and_readback"});
+  pushCommand([point](UAV_Model &uav)
+              { uav.uploadRallyPoint(point); });
+  return true;
+}
+
+void UAV_Model::uploadRallyPoint(const RallyPoint &point)
+{
+  const auto fail = [this, &point](const std::string &reason)
+  {
+    mts_rally.set({point, "FAILED", reason});
+    reportCommandResult("RALLY", "FAILED", reason);
+  };
+  const auto grounded = [this]()
+  {
+    return !isArmed() && hasLandedStateTelemetry() &&
+           getLandedStateTelemetryAge() <= LANDED_STATE_TELEMETRY_MAX_AGE_S &&
+           getLandedState() == mavsdk::Telemetry::LandedState::OnGround;
+  };
+  if (!grounded())
+  {
+    fail("require_fresh_grounded_disarmed");
+    return;
+  }
+  mavsdk::MissionRaw::MissionItem item{};
+  item.seq = 0;
+  item.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
+  item.command = MAV_CMD_NAV_RALLY_POINT;
+  // MAVSDK requires exactly one current item even for a rally list.
+  // ArduPilot ignores this flag for RALLY; no flight-plan item is modified.
+  item.current = 1;
+  item.autocontinue = 0;
+  item.x = static_cast<int32_t>(std::llround(point.latitude * 1e7));
+  item.y = static_cast<int32_t>(std::llround(point.longitude * 1e7));
+  item.z = static_cast<float>(point.altitude_above_home);
+  item.mission_type = MAV_MISSION_TYPE_RALLY;
+  const auto upload = m_mission_raw_ptr->upload_rally_points({item});
+  if (upload != mavsdk::MissionRaw::Result::Success)
+  {
+    std::ostringstream reason;
+    reason << "rally_upload_failed:" << upload;
+    fail(reason.str());
+    return;
+  }
+  if (!grounded())
+  {
+    fail("vehicle_changed_during_upload");
+    return;
+  }
+  // Only the selected rally is eligible. Never manually set RALLY_TOTAL:
+  // the typed rally mission transfer owns the list and count.
+  std::string parameter_reason;
+  if (!verifyRallyIntParameter("RALLY_INCL_HOME", 0, parameter_reason))
+  {
+    fail(parameter_reason);
+    return;
+  }
+  const auto limit_write = m_param_ptr->set_param_float("RALLY_LIMIT_KM", 0);
+  if (limit_write != mavsdk::Param::Result::Success)
+  {
+    std::ostringstream reason;
+    reason << "rally_selection_parameter_write_failed:RALLY_LIMIT_KM:" << limit_write;
+    fail(reason.str());
+    return;
+  }
+  // Copter also applies an RTL altitude floor independently of rally storage.
+  // Current firmware uses metres; older Copter uses centimetres.
+  const auto metres = m_param_ptr->get_param_float("RTL_ALT_M");
+  bool rtl_altitude_ok = false;
+  if (metres.first == mavsdk::Param::Result::Success)
+  {
+    if (m_param_ptr->set_param_float("RTL_ALT_M", point.altitude_above_home) == mavsdk::Param::Result::Success)
+    {
+      const auto actual = m_param_ptr->get_param_float("RTL_ALT_M");
+      rtl_altitude_ok = actual.first == mavsdk::Param::Result::Success &&
+                        std::isfinite(actual.second) && fabs(actual.second - point.altitude_above_home) < 0.01;
+    }
+  }
+  else
+  {
+    const int centimetres = static_cast<int>(point.altitude_above_home * 100);
+    if (verifyRallyIntParameter("RTL_ALT", centimetres, parameter_reason))
+    {
+      const auto actual = m_param_ptr->get_param_int("RTL_ALT");
+      rtl_altitude_ok = actual.first == mavsdk::Param::Result::Success && actual.second == centimetres;
+    }
+  }
+  const bool type_verified = verifyRallyIntParameter("RTL_ALT_TYPE", 0, parameter_reason);
+  const auto type_read = m_param_ptr->get_param_int("RTL_ALT_TYPE");
+  if (!rtl_altitude_ok || !type_verified ||
+      type_read.first != mavsdk::Param::Result::Success || type_read.second != 0)
+  {
+    fail("rtl_altitude_or_home_frame_readback_failed");
+    return;
+  }
+  const auto home = m_param_ptr->get_param_int("RALLY_INCL_HOME");
+  const auto limit = m_param_ptr->get_param_float("RALLY_LIMIT_KM");
+  mavsdk::MissionRaw::MissionItem received{};
+  const bool readback = readRallyPoint(received);
+  if (home.first != mavsdk::Param::Result::Success || home.second != 0 ||
+      limit.first != mavsdk::Param::Result::Success ||
+      !std::isfinite(limit.second) || fabs(limit.second) > 1e-6 || !readback)
+  {
+    fail("rally_readback_or_selection_mismatch");
+    return;
+  }
+  if (received.command != MAV_CMD_NAV_RALLY_POINT ||
+      (received.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT &&
+       received.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) ||
+      std::abs(static_cast<int64_t>(received.x) - item.x) > 1 ||
+      std::abs(static_cast<int64_t>(received.y) - item.y) > 1 ||
+      !std::isfinite(received.z) || fabs(received.z - item.z) > 0.1 ||
+      !grounded())
+  {
+    fail("rally_point_readback_mismatch");
+    return;
+  }
+  mts_rally.set({point, "READY", "rally_ack_readback_and_selection_verified"});
+  reportCommandResult("RALLY", "ACCEPTED", "READBACK_VERIFIED");
 }
 
 bool UAV_Model::commandAutoland() const

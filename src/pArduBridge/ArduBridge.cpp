@@ -152,6 +152,29 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
 
     if (key == "YAW_ALIGN_REQUEST")
       handleYawAlignmentRequest(msg);
+    else if (key == "RALLY_UPLOAD")
+    {
+      const std::string id = tokStringParse(msg.GetString(), "id", '#', '=');
+      const std::string sx = tokStringParse(msg.GetString(), "x", '#', '=');
+      const std::string sy = tokStringParse(msg.GetString(), "y", '#', '=');
+      const std::string sa =
+          tokStringParse(msg.GetString(), "altitude", '#', '=');
+      const double x = atof(sx.c_str());
+      const double y = atof(sy.c_str());
+      double latitude = 0, longitude = 0;
+      bool valid =
+          msg.IsString() && !id.empty() && isNumber(sx) && isNumber(sy) &&
+          isNumber(sa) && std::isfinite(x) && std::isfinite(y) &&
+          fabs(x) <= 100000 && fabs(y) <= 100000;
+      if (valid)
+        valid = transformXYToLatLon(x, y, latitude, longitude);
+      if (!valid || !m_uav_model.requestRallyUpload(
+                        {id, latitude, longitude, atof(sa.c_str())}))
+        Notify(m_uav_prefix + "_RALLY_RESULT",
+               "id=" + id +
+                   "#status=REJECTED#detail=invalid_busy_or_not_grounded_"
+                   "disarmed");
+    }
     else if (key == "DESIRED_HEADING") // DESIRED_COURSE comes in as DESIRED_HEADING from pHelm for legacy reasons
     {
       // The Helm plans in the local grid; ArduPilot expects true courses.
@@ -623,6 +646,19 @@ bool ArduBridge::Iterate()
   }
 
   pollBrakeAndHold();
+
+  const auto rally = m_uav_model.getRallyStatus();
+  const bool rally_ready = m_uav_model.rallyReady();
+  Notify(m_uav_prefix + "_RALLY_READY", rally_ready ? 1.0 : 0.0);
+  Notify(m_uav_prefix + "_RALLY_ID",
+         rally.point.id.empty() ? "none" : rally.point.id);
+  Notify(m_uav_prefix + "_RALLY_STATE", rally.state);
+  Notify(m_uav_prefix + "_RALLY_RESULT",
+         "id=" + rally.point.id + "#status=" +
+             (rally.state == "READY" && !rally_ready ? "FAILED" : rally.state) +
+             "#detail=" +
+             (rally.state == "READY" && !rally_ready ? "controller_disconnected"
+                                                     : rally.detail));
 
   // LAND/RTL may be selected directly at the FC, without a MOOS request.
   // Never let an older readiness probe reclaim Guided from those modes.
@@ -1244,6 +1280,13 @@ bool ArduBridge::OnStartUp()
     {
       handled = setBooleanOnString(m_show_loiter_visuals, value);
     }
+    else if (param == "require_verified_rally" && isBoolean(value))
+    {
+      bool required = false;
+      handled = setBooleanOnString(required, value);
+      if (handled)
+        m_uav_model.requireVerifiedRally(required);
+    }
     else if (param == "precision_loiter_enter_loiter" && isBoolean(value))
     {
       handled = setBooleanOnString(m_precision_loiter_enter_loiter, value);
@@ -1474,6 +1517,7 @@ void ArduBridge::registerVariables()
 
   Register("FLY_WAYPOINT", 0);
   Register("SITL_SPEEDUP", 0);
+  Register("RALLY_UPLOAD", 0);
   Register("YAW_ALIGN_REQUEST", 0);
   Register("DO_TAKEOFF", 0);
   Register("RETURN_TO_LAUNCH", 0);
@@ -1541,6 +1585,18 @@ bool ArduBridge::buildReport()
   field("Passive Mode");
   m_msgs << boolToString(m_passive) << std::endl;
 
+  const auto rally_status = m_uav_model.getRallyStatus();
+  field("Rally Transaction");
+  m_msgs << (rally_status.point.id.empty() ? "--" : rally_status.point.id)
+         << std::endl;
+  field("Rally Verification");
+  m_msgs << rally_status.state << " (" << rally_status.detail << ")"
+         << std::endl;
+  field("Rally Coordinates");
+  m_msgs << doubleToStringX(rally_status.point.latitude, 7) << ", "
+         << doubleToStringX(rally_status.point.longitude, 7) << "; "
+         << doubleToStringX(rally_status.point.altitude_above_home, 0)
+         << " m above Home" << std::endl;
   if (m_passive)
   {
     field("Passive State");
@@ -2439,6 +2495,18 @@ bool ArduBridge::parseCoordinateString(const std::string &input, double &lat, do
   }
 
   return true;
+}
+
+bool ArduBridge::transformXYToLatLon(double x, double y, double &latitude,
+                                     double &longitude)
+{
+  if (!m_geo_ok || !std::isfinite(x) || !std::isfinite(y))
+    return false;
+
+  // MOOS local coordinates are x=east and y=north. Both inverse geodesy
+  // methods take the local easting/X first and northing/Y second.
+  return m_geo_utm ? m_geodesy.UTM2LatLong(x, y, latitude, longitude)
+                   : m_geodesy.LocalGrid2LatLong(x, y, latitude, longitude);
 }
 
 XYPoint ArduBridge::transformLatLonToXY(const XYPoint &lat_lon)

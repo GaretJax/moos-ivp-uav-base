@@ -5,6 +5,7 @@
 /*    DATE: December 29th, 1963                              */
 /************************************************************/
 
+#include <cstdlib>
 #include <string>
 #include <iostream>
 #include <unistd.h>  // For getcwd
@@ -63,7 +64,11 @@ int main(int argc, char *argv[])
     cout << termColor() << endl;
 
     // Avoid MAVSDK's default logging path during serial system discovery.
-    mavsdk::log::subscribe([](mavsdk::log::Level, const std::string&, const std::string&, int) {
+    const bool parameter_debug = std::getenv("MAVSDK_PARAMETER_DEBUGGING") != nullptr;
+    mavsdk::log::subscribe([parameter_debug](mavsdk::log::Level, const std::string& message,
+                                             const std::string& file, int line) {
+        if (parameter_debug)
+            std::cerr << "MAVSDK " << file << ":" << line << ": " << message << std::endl;
         return true;
     });
 

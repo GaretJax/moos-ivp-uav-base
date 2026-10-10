@@ -16,6 +16,7 @@ SET(SRC
   ArduBridge.cpp
   ArduBridge_Info.cpp
   UAV_Model.cpp
+  UAV_Rally.cpp
   main.cpp
 )
 

@@ -169,6 +169,8 @@ private: // Helperfunctions
   std::string generateMissionPathSpec(const std::vector<XYPoint> &points) const;
 
   std::string xypointToString(const XYPoint &point) const;
+  bool transformXYToLatLon(double x, double y, double &latitude,
+                           double &longitude);
   XYPoint transformLatLonToXY(const XYPoint &lat_lon);
   // Local-frame bearing of true north at a position; non-zero only for UTM,
   // whose grid north differs from true north by the convergence angle.

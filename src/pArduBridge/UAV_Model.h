@@ -133,6 +133,21 @@ public:
     float q_z = 0.0f;
   };
 
+  struct RallyPoint
+  {
+    std::string id;
+    double latitude = 0, longitude = 0, altitude_above_home = 15;
+  };
+  struct RallyStatus
+  {
+    RallyPoint point;
+    std::string state = "UNSET", detail = "no_rally_uploaded";
+  };
+  bool requestRallyUpload(const RallyPoint &point);
+  RallyStatus getRallyStatus() const { return mts_rally.get(); }
+  bool rallyReady() const;
+  void requireVerifiedRally(bool required) { m_require_rally = required; }
+
   using CommandCompletion = std::function<void(bool, const std::string &)>;
 
   enum class VehicleType
@@ -380,6 +395,9 @@ public:
 
 private:
   bool initializeSystem(const std::shared_ptr<mavsdk::System> &system, bool command_plugins);
+  void uploadRallyPoint(const RallyPoint &point);
+  bool readRallyPoint(mavsdk::MissionRaw::MissionItem &point);
+  bool verifyRallyIntParameter(const std::string &name, int value, std::string &reason);
   void runCommandsender(); // Main loop for the UAV thread
   std::string brakeAdmissionReason(double now_s) const;
   bool serviceBrakeAndHold(double now_s); // command thread, arbiter locked
@@ -529,6 +547,9 @@ protected:
   ThreadSafeVariable<mavsdk::Telemetry::RawGps> mts_raw_gps;
   ThreadSafeVariable<mavsdk::Telemetry::LandedState> mts_landed_state;
   ThreadSafeVariable<LandingTargetTelemetry> mts_landing_target;
+
+  ThreadSafeVariable<RallyStatus> mts_rally;
+  std::atomic<bool> m_require_rally{false};
 
   ThreadSafeVariable<mavsdk::Telemetry::FlightMode> mts_flight_mode;
 
