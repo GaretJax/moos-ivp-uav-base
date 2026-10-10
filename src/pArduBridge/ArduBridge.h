@@ -60,6 +60,9 @@ protected:
   void handleHelmSetpointTimeout();
   void postHelmSetpointStatus();
   void pollGuidedHandoffConfirmation();
+  void pollBrakeAndHold();
+  double m_last_brake_post_time = -1;
+  std::string m_last_brake_post_state;
 
 private: // Configuration variables
   std::string m_uav_prefix;
@@ -86,6 +89,7 @@ private: // Autopilot Helm states
     // Inactive states where the Helm is not in control (MOOS_MANUAL_OVERRIDE = true) but still in Drive
     HELM_INACTIVE,
     HELM_INACTIVE_LOITERING,
+    HELM_INACTIVE_BRAKING,
 
     // Active states where the Helm is in control
     HELM_ACTIVE, // Helm has nothing to do
@@ -103,6 +107,7 @@ private: // Autopilot Helm states
       {AutopilotHelmMode::HELM_PARKED, "HELM_PARKED"},
       {AutopilotHelmMode::HELM_INACTIVE, "HELM_INACTIVE"},
       {AutopilotHelmMode::HELM_INACTIVE_LOITERING, "HELM_INACTIVE_LOITERING"},
+      {AutopilotHelmMode::HELM_INACTIVE_BRAKING, "HELM_INACTIVE_BRAKING"},
       {AutopilotHelmMode::HELM_ACTIVE, "HELM_ACTIVE"},
       {AutopilotHelmMode::HELM_TOWAYPT, "HELM_TOWAYPT"},
       {AutopilotHelmMode::HELM_RETURNING, "HELM_RETURNING"},

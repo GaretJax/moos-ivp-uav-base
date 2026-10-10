@@ -112,7 +112,7 @@ void showInterfaceAndExit()
   blk("------------------------------------                            ");
   blk("  ARDU_COMMAND = FLY_WAYPOINT | DO_TAKEOFF | RESET_SPEED_MIN   ");
   blk("                 RETURN_TO_LAUNCH | HOLD_POSITION | LOITER     ");
-  blk("                 LOITER_FC                                     ");
+  blk("                 BRAKE_AND_HOLD | LOITER_FC                    ");
   blk("                 PRECISION_LOITER | PRECISION_LOITER_OFF        ");
   blk("                 AUTOLAND | SURVEY | DO_VORONOI | VIZ_HOME      ");
   blk("  ARM_UAV = true|false                                         ");
@@ -161,6 +161,9 @@ void showInterfaceAndExit()
   blk("  UAV_LAND_POLICY_READY      // 1 when mode policy permits a new LAND submission       ");
   blk("  UAV_LAND_POLICY_REASON     // Stable reason token; all unlisted modes are denied      ");
   blk("  UAV_COMMAND_RESULT         // Every ARDU_COMMAND reports an outcome; takeoff adds COMPLETED ");
+  blk("  UAV_BRAKE_HOLD_PHASE, UAV_BRAKE_HOLD_REASON // Route BRAKE_AND_HOLD progress/blockers ");
+  blk("  UAV_BRAKE_HOLD_SPEED, UAV_BRAKE_HOLD_MOTION_AGE // Native horizontal m/s, real receive s ");
+  blk("  UAV_BRAKE_HOLD_SAMPLES, UAV_BRAKE_HOLD_ID // Distinct stopped FC frames, transaction ID ");
   blk("  UAV_ROLL, UAV_PITCH         // Native snapshot degrees, right bank / nose up positive ");
   blk("  UAV_ATTITUDE_AVAILABLE     // 1 after a finite native Euler sample; check AGE too ");
   blk("  UAV_ATTITUDE_AGE           // Native receipt age, real seconds; -1 if unavailable ");

@@ -683,6 +683,47 @@ bool UAV_Model::subscribeToTelemetry(bool request_message_rates)
                                          { mts_flight_mode = flight_mode; });
 
   m_mavPass_ptr->subscribe_message(
+      MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+      [this](const mavlink_message_t &message)
+      {
+        if (message.sysid != m_system_ptr->get_system_id() ||
+            message.compid != MAV_COMP_ID_AUTOPILOT1)
+          return; // Never use simulator/peer geometry as native stop evidence.
+        mavlink_global_position_int_t raw{};
+        mavlink_msg_global_position_int_decode(&message, &raw);
+        std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+        const auto previous = mts_motion_snapshot.get();
+        if (previous.received_s >= 0 && raw.time_boot_ms == previous.boot_ms)
+          return; // Repeated FC timestamps do not refresh or count.
+        if (previous.received_s >= 0 && raw.time_boot_ms < previous.boot_ms) {
+          m_motion_epoch_s = std::chrono::duration<double>(
+              std::chrono::steady_clock::now().time_since_epoch()).count();
+          if (m_brake_status.phase == BrakePhase::Braking ||
+              m_brake_status.phase == BrakePhase::HoldTargetSent) {
+            m_brake_status.phase = BrakePhase::Failed;
+            m_brake_status.reason = "NATIVE_CLOCK_RESET_OR_REORDER";
+            m_brake_running = false;
+            reportCommandResult("BRAKE_AND_HOLD", "FAILED",
+                                m_brake_status.reason, m_brake_status.command_id);
+          }
+          // Outside a transaction accept the reboot's new baseline; no old
+          // brake intent is replayed. Active failures remain latched.
+        }
+        MotionTelemetry motion;
+        motion.position.latitude_deg = raw.lat / 1e7;
+        motion.position.longitude_deg = raw.lon / 1e7;
+        motion.position.absolute_altitude_m = raw.alt / 1000.0f;
+        motion.position.relative_altitude_m = raw.relative_alt / 1000.0f;
+        motion.velocity.north_m_s = raw.vx / 100.0f;
+        motion.velocity.east_m_s = raw.vy / 100.0f;
+        motion.velocity.down_m_s = raw.vz / 100.0f;
+        motion.boot_ms = raw.time_boot_ms;
+        motion.received_s = std::chrono::duration<double>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        mts_motion_snapshot.set(motion);
+      });
+
+  m_mavPass_ptr->subscribe_message(
       MAVLINK_MSG_ID_LANDING_TARGET,
       [this](const mavlink_message_t &message)
       {
@@ -1324,6 +1365,10 @@ bool UAV_Model::commandCopterYawAlignment(double true_heading_deg, double rate_d
 
 bool UAV_Model::refreshCopterGuidedHold()
 {
+  std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+  if (m_brake_status.phase != BrakePhase::Idle &&
+      m_brake_status.phase != BrakePhase::Canceled)
+    return m_brake_status.phase == BrakePhase::HoldTargetSent;
   if (!isCopter() || !isGuidedMode())
     return false;
 
@@ -1481,9 +1526,198 @@ bool UAV_Model::commandAndSetAirSpeed(double speed)
   return false;
 }
 
+std::string UAV_Model::brakePhaseName(BrakePhase phase)
+{
+  switch (phase) {
+  case BrakePhase::Braking: return "BRAKING";
+  case BrakePhase::HoldTargetSent: return "HOLD_TARGET_SENT";
+  case BrakePhase::Failed: return "FAILED";
+  case BrakePhase::Canceled: return "CANCELED";
+  default: return "IDLE";
+  }
+}
+
+std::string UAV_Model::brakeAdmissionReason(double now_s) const
+{
+  const auto fresh = [now_s](double stamp, double max_age) {
+    const double age = now_s - stamp;
+    return std::isfinite(stamp) && stamp >= 0 && std::isfinite(age) &&
+           age >= 0 && age <= max_age;
+  };
+  const auto armed = mts_armed_snapshot.get();
+  const double landed_age = getLandedStateTelemetryAge();
+  if (!isCopter() || !isFlightControllerConnected() || !isGuidedMode() ||
+      !isArmed() || !armed.armed || armed.received_s < m_motion_epoch_s ||
+      m_last_landed_state_update_s.load() < m_motion_epoch_s ||
+      !fresh(armed.received_s, LANDED_STATE_TELEMETRY_MAX_AGE_S) ||
+      !hasLandedStateTelemetry() || !std::isfinite(landed_age) ||
+      landed_age < 0 || landed_age > LANDED_STATE_TELEMETRY_MAX_AGE_S ||
+      getLandedState() != mavsdk::Telemetry::LandedState::InAir)
+    return "REQUIRE_FRESH_ARMED_GUIDED_AIRBORNE";
+  const auto motion = mts_motion_snapshot.get();
+  const auto &p = motion.position;
+  const auto &v = motion.velocity;
+  if (!fresh(motion.received_s, BRAKE_MOTION_MAX_AGE_S) ||
+      !std::isfinite(p.latitude_deg) || std::abs(p.latitude_deg) > 90 ||
+      !std::isfinite(p.longitude_deg) || std::abs(p.longitude_deg) > 180 ||
+      !std::isfinite(p.absolute_altitude_m) || !std::isfinite(p.relative_altitude_m) ||
+      !std::isfinite(v.north_m_s) || !std::isfinite(v.east_m_s) ||
+      !std::isfinite(v.down_m_s))
+    return "MISSING_STALE_OR_INVALID_NATIVE_MOTION";
+  return "";
+}
+
+bool UAV_Model::requestBrakeAndHold()
+{
+  std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+  const double now_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  std::string reason = brakeAdmissionReason(now_s);
+  if (m_brake_status.phase != BrakePhase::Idle &&
+      m_brake_status.phase != BrakePhase::Canceled)
+    reason = "BRAKE_TRANSACTION_RESERVED";
+  {
+    std::lock_guard<std::mutex> queue_lock(m_queue_mutex);
+    if (m_command_executing || !m_command_queue.empty())
+      reason = "COMMAND_QUEUE_BUSY";
+  }
+  if (!reason.empty()) {
+    reportCommandResult("BRAKE_AND_HOLD", "REJECTED", reason);
+    return false;
+  }
+  const auto motion = mts_motion_snapshot.get();
+  m_brake_status = BrakeStatus{};
+  m_brake_status.phase = BrakePhase::Braking;
+  m_brake_running = true;
+  m_brake_status.reason = "request_admitted";
+  m_brake_started_s = now_s;
+  m_brake_altitude_agl_m = motion.position.relative_altitude_m;
+  m_brake_last_boot_ms = motion.boot_ms; // retained zero is not a new sample
+  m_brake_status.command_id = reportCommandResult(
+      "BRAKE_AND_HOLD", "SUBMITTED", "BRAKING_PENDING");
+  m_thread_cv.notify_one();
+  return true;
+}
+
+void UAV_Model::cancelBrakeAndHold(const std::string &reason)
+{
+  std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+  if (m_brake_status.phase == BrakePhase::Idle ||
+      m_brake_status.phase == BrakePhase::Canceled)
+    return;
+  // Release the sender only on explicit new intent/preemption, never on
+  // timeout/failure. No deferred old hold is left in the command queue.
+  m_brake_status.phase = BrakePhase::Canceled;
+  m_brake_running = false;
+  m_brake_status.reason = reason;
+  reportCommandResult("BRAKE_AND_HOLD", "CANCELED", reason,
+                      m_brake_status.command_id);
+}
+
+UAV_Model::BrakeStatus UAV_Model::getBrakeAndHoldStatus() const
+{
+  std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+  auto status = m_brake_status;
+  const auto motion = mts_motion_snapshot.get();
+  const double now_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  if (motion.received_s >= 0) {
+    status.motion_age_s = now_s - motion.received_s;
+    status.speed_m_s = std::hypot(motion.velocity.north_m_s, motion.velocity.east_m_s);
+  }
+  return status;
+}
+
+bool UAV_Model::serviceBrakeAndHold(double now_s)
+{
+  if (m_brake_status.phase == BrakePhase::Idle ||
+      m_brake_status.phase == BrakePhase::Canceled)
+    return false;
+  const auto mode = getFlightMode();
+  if (mode == mavsdk::Telemetry::FlightMode::Land ||
+      mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch) {
+    cancelBrakeAndHold("FC_LAND_OR_RTL_PREEMPTED");
+    return true;
+  }
+  if (m_brake_status.phase != BrakePhase::Braking)
+    return true; // a held/failed transaction must not replay Helm velocity
+
+  const auto fail = [this](const std::string &reason) {
+    m_brake_status.phase = BrakePhase::Failed;
+    m_brake_running = false;
+    m_brake_status.reason = reason;
+    reportCommandResult("BRAKE_AND_HOLD", "FAILED", reason,
+                        m_brake_status.command_id);
+  };
+  const std::string invalid = brakeAdmissionReason(now_s);
+  if (!invalid.empty()) {
+    fail(invalid);
+    return true;
+  }
+  if (now_s - m_brake_started_s >= BRAKE_TIMEOUT_S) {
+    fail("BRAKING_TIMEOUT");
+    return true;
+  }
+
+  // Zero horizontal velocity, altitude held, yaw ignored at zero speed.
+  // No XYZ anchor exists yet. This helper never re-enters Guided.
+  if (!sendCopterVelocitySetpoint(0, 0, m_brake_altitude_agl_m)) {
+    fail("ZERO_VELOCITY_QUEUE_FAILED");
+    return true;
+  }
+  if (m_brake_status.reason == "request_admitted") {
+    m_brake_status.reason = "zero_velocity_queued";
+    reportCommandResult("BRAKE_AND_HOLD", "ACCEPTED",
+                        "ZERO_VELOCITY_QUEUED", m_brake_status.command_id);
+  }
+  const auto motion = mts_motion_snapshot.get();
+  if (motion.boot_ms == m_brake_last_boot_ms ||
+      motion.received_s <= m_brake_started_s)
+    return true;
+  m_brake_last_boot_ms = motion.boot_ms;
+  const double speed = std::hypot(motion.velocity.north_m_s, motion.velocity.east_m_s);
+  m_brake_status.stopped_samples =
+      speed <= BRAKE_STOP_SPEED_M_S ? m_brake_status.stopped_samples + 1 : 0;
+  if (m_brake_status.stopped_samples < BRAKE_STOP_SAMPLES)
+    return true;
+
+  // Coherent native position and velocity come from the same fresh FC packet.
+  // Capture AFTER measured braking, not where the request was received.
+  auto hold_position = motion.position;
+  hold_position.absolute_altitude_m +=
+      m_brake_altitude_agl_m - hold_position.relative_altitude_m;
+  if (!sendCopterPositionSetpoint(hold_position, 0, true)) {
+    fail("HOLD_TARGET_QUEUE_FAILED");
+    return true;
+  }
+  mts_current_loiter_coord.set(
+      XYPoint(hold_position.latitude_deg, hold_position.longitude_deg));
+  m_last_sent_altitudeAGL = m_brake_altitude_agl_m;
+  m_target_altitudeAGL = m_brake_altitude_agl_m;
+  m_brake_status.phase = BrakePhase::HoldTargetSent;
+  m_brake_running = false;
+  m_brake_status.reason = "native_stopped_hold_target_queued";
+  // SET_POSITION_TARGET has no ACK: do not claim FC receipt/execution.
+  reportCommandResult("BRAKE_AND_HOLD", "COMPLETED",
+                      "NATIVE_STOPPED_HOLD_TARGET_QUEUED",
+                      m_brake_status.command_id);
+  return true;
+}
+
 bool UAV_Model::commandCopterHelmSetpoint(double course_deg,
                                           double speed_m_s,
                                           double altitude_agl_m)
+{
+  std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+  if (m_brake_status.phase != BrakePhase::Idle &&
+      m_brake_status.phase != BrakePhase::Canceled)
+    return false; // Never replay a late Helm velocity over braking/hold/failure.
+  return sendCopterVelocitySetpoint(course_deg, speed_m_s, altitude_agl_m);
+}
+
+bool UAV_Model::sendCopterVelocitySetpoint(double course_deg,
+                                           double speed_m_s,
+                                           double altitude_agl_m)
 {
   // The legacy m_in_air flag uses a 5 m altitude threshold. A Copter remains
   // airborne during low-altitude Guided flight; use its native landed state
@@ -1497,8 +1731,7 @@ bool UAV_Model::commandCopterHelmSetpoint(double course_deg,
   if (!isCopter() || !airborne)
   {
     m_warning_system_ptr->queue_monitorWarningForXseconds(
-        "Copter Helm setpoint requires fresh airborne Copter telemetry",
-        WARNING_DURATION);
+        "Copter Helm setpoint requires fresh airborne Copter telemetry", WARNING_DURATION);
     return false;
   }
 
@@ -1739,23 +1972,12 @@ bool UAV_Model::commandGoToLocationXY(const XYPoint pos, bool holdCurrentAltitud
   return commandGoToLocation(wpt);
 }
 
-bool UAV_Model::commandGoToLocation(const mavsdk::Telemetry::Position &position,
-                                    double copterYawDeg)
+bool UAV_Model::sendCopterPositionSetpoint(
+    const mavsdk::Telemetry::Position &position, double yaw_deg, bool ignore_yaw)
 {
-
-  if (!commandGuidedMode())
+  // This transport helper never enters Guided or steals FC-owned modes.
+  if (!isCopter() || !isFlightControllerConnected() || !isGuidedMode())
     return false;
-
-  if (!haveAutorythyToChangeMode())
-  {
-    std::stringstream ss;
-    ss << "Cannot change mode. Do not have autorithy. Flight mode in " << mts_flight_mode;
-    m_warning_system_ptr->queue_monitorWarningForXseconds(ss.str(), WARNING_DURATION);
-    return false;
-  }
-
-  if (isCopter())
-  {
     const auto current_position = mts_position.get();
     const float terrain_altitude_m =
         current_position.absolute_altitude_m -
@@ -1763,7 +1985,7 @@ bool UAV_Model::commandGoToLocation(const mavsdk::Telemetry::Position &position,
     const float target_altitude_agl_m =
         position.absolute_altitude_m - terrain_altitude_m;
     const double target_yaw_deg =
-        std::isfinite(copterYawDeg) ? angle360(copterYawDeg) : getHeading();
+        std::isfinite(yaw_deg) ? angle360(yaw_deg) : getHeading();
     const float target_yaw_rad =
         static_cast<float>(target_yaw_deg * M_PI / 180.0);
 
@@ -1773,7 +1995,8 @@ bool UAV_Model::commandGoToLocation(const mavsdk::Telemetry::Position &position,
         (1U << 6) | (1U << 7) | (1U << 8);
     constexpr uint16_t IGNORE_YAW_RATE = (1U << 11);
     const uint16_t type_mask =
-        IGNORE_VELOCITY | IGNORE_ACCELERATION | IGNORE_YAW_RATE;
+        IGNORE_VELOCITY | IGNORE_ACCELERATION | IGNORE_YAW_RATE |
+        (ignore_yaw ? (1U << 10) : 0);
     const uint8_t target_system = m_system_ptr->get_system_id();
     const uint8_t target_component = MAV_COMP_ID_AUTOPILOT1;
     const uint32_t time_boot_ms = static_cast<uint32_t>(
@@ -1822,7 +2045,25 @@ bool UAV_Model::commandGoToLocation(const mavsdk::Telemetry::Position &position,
 
     Logger::info("UAV_Model: Copter Guided position hold queued");
     return true;
+}
+
+bool UAV_Model::commandGoToLocation(const mavsdk::Telemetry::Position &position,
+                                    double copterYawDeg)
+{
+
+  if (!commandGuidedMode())
+    return false;
+
+  if (!haveAutorythyToChangeMode())
+  {
+    std::stringstream ss;
+    ss << "Cannot change mode. Do not have autorithy. Flight mode in " << mts_flight_mode;
+    m_warning_system_ptr->queue_monitorWarningForXseconds(ss.str(), WARNING_DURATION);
+    return false;
   }
+
+  if (isCopter())
+    return sendCopterPositionSetpoint(position, copterYawDeg);
 
   // blocking //TODO modify so it is non
   auto res = m_action_ptr->goto_location(
@@ -2350,7 +2591,7 @@ void UAV_Model::runCommandsender()
     {
       std::unique_lock lock(m_queue_mutex);
       m_thread_cv.wait(lock, [this]()
-                       { return !m_command_queue.empty() || !m_running || m_sendValuesEnabled; });
+                       { return !m_command_queue.empty() || !m_running || m_sendValuesEnabled || m_brake_running; });
 
       if (!m_running)
         break;
@@ -2359,6 +2600,7 @@ void UAV_Model::runCommandsender()
       {
         cmd = std::move(m_command_queue.front());
         m_command_queue.pop();
+        m_command_executing = true;
       }
     }
 
@@ -2374,9 +2616,15 @@ void UAV_Model::runCommandsender()
       }
     }
 
-    if (m_sendValuesEnabled && sendDesiredValues)
+    m_command_executing = false;
     {
-      sendDesiredValues(*this, false);
+      // Serialize the native handoff with the last Helm send. No blocking
+      // mode changes, sleeps or command-ACK waits inside this arbiter.
+      std::lock_guard<std::recursive_mutex> lock(m_brake_mutex);
+      const double now_s = std::chrono::duration<double>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+      if (!serviceBrakeAndHold(now_s) && m_sendValuesEnabled && sendDesiredValues)
+        sendDesiredValues(*this, false);
     }
 
     auto sleep = !m_command_queue.empty() ? 10 : 100;

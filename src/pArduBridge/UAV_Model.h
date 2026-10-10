@@ -8,7 +8,6 @@
 #pragma once
 
 #include <string>
-#include "NodeRecord.h"
 #include "AngleUtils.h"
 
 // Undefine DEPRECATED macro from MOOS to avoid conflict with MAVSDK
@@ -23,7 +22,6 @@
 #include <mavsdk/plugins/mission_raw/mission_raw.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <mavsdk/plugins/param/param.h>
-#include <iostream>
 
 #include <functional>
 #include <cstdint>
@@ -197,6 +195,33 @@ public:
   bool commandAndSetAirSpeed(double speed);
   bool commandGroundSpeed(double speed) { return (commandSpeed(speed, SPEED_TYPE::SPEED_TYPE_GROUNDSPEED)); }
   bool commandCopterHelmSetpoint(double course_deg, double speed_m_s, double altitude_agl_m);
+
+  // Route-only, asynchronous zero-velocity braking followed by a native hold.
+  // These are real receive seconds, independent of MOOS/SITL warp.
+  static constexpr double BRAKE_MOTION_MAX_AGE_S = 0.5;
+  static constexpr double BRAKE_STOP_SPEED_M_S = 0.15;
+  static constexpr double BRAKE_TIMEOUT_S = 10.0;
+  static constexpr unsigned BRAKE_STOP_SAMPLES = 3;
+  struct MotionTelemetry
+  {
+    mavsdk::Telemetry::Position position{};
+    mavsdk::Telemetry::VelocityNed velocity{};
+    uint32_t boot_ms = 0;
+    double received_s = -1;
+  };
+  enum class BrakePhase { Idle, Braking, HoldTargetSent, Failed, Canceled };
+  struct BrakeStatus
+  {
+    BrakePhase phase = BrakePhase::Idle;
+    std::string reason = "not_requested";
+    uint64_t command_id = 0;
+    double speed_m_s = -1, motion_age_s = -1;
+    unsigned stopped_samples = 0;
+  };
+  bool requestBrakeAndHold();
+  void cancelBrakeAndHold(const std::string &reason);
+  BrakeStatus getBrakeAndHoldStatus() const;
+  static std::string brakePhaseName(BrakePhase phase);
   bool commandAndSetAltitudeAGL(double altitudeAGL_m); // requires guided mode
   bool commandGoToLocationXY(const XYPoint pos, bool holdCurrentAltitudeAGL = false);
   bool commandGoToLocation(const mavsdk::Telemetry::Position &position,
@@ -304,7 +329,7 @@ public:
   double getSOG() const { return (m_GPS_SOG_m_s); }
   struct AttitudeTelemetry
   {
-    mavsdk::Telemetry::EulerAngle euler{};
+    mavsdk::Telemetry::EulerAngle euler = mavsdk::Telemetry::EulerAngle();
     double received_s = -1;
     double received_moos_time = -1;
   };
@@ -355,6 +380,19 @@ public:
 private:
   bool initializeSystem(const std::shared_ptr<mavsdk::System> &system, bool command_plugins);
   void runCommandsender(); // Main loop for the UAV thread
+  std::string brakeAdmissionReason(double now_s) const;
+  bool serviceBrakeAndHold(double now_s); // command thread, arbiter locked
+  bool sendCopterVelocitySetpoint(double course_deg, double speed_m_s, double altitude_agl_m);
+  bool sendCopterPositionSetpoint(const mavsdk::Telemetry::Position &position,
+                                  double yaw_deg, bool ignore_yaw = false);
+  mutable std::recursive_mutex m_brake_mutex;
+  BrakeStatus m_brake_status;
+  std::atomic<bool> m_brake_running{false};
+  double m_brake_started_s = -1, m_brake_altitude_agl_m = 0;
+  double m_motion_epoch_s = -1; // native clock reset invalidates old arm/air evidence
+  uint32_t m_brake_last_boot_ms = 0;
+  ThreadSafeVariable<MotionTelemetry> mts_motion_snapshot{MotionTelemetry()};
+  std::atomic<bool> m_command_executing{false};
   void runPassiveTelemetry();
   std::atomic<bool> m_running{false};
   std::atomic<PassiveState> m_passive_state{PassiveState::Disabled};

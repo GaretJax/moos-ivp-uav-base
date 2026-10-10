@@ -127,6 +127,27 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       continue;
     
 
+    // Explicit newer intent releases the brake arbiter before queuing any
+    // other flight command. Desired-value refreshes are NOT new intent.
+    static const std::set<std::string> flight_commands = {
+        "FLY_WAYPOINT", "ENTER_GUIDED", "DO_TAKEOFF", "RETURN_TO_LAUNCH",
+        "RETURN", "LOITER", "HOLD_POSITION", "LOITER_FC", "PRECISION_LOITER",
+        "PRECISION_LOITER_ON", "PRECISION_LOITER_ENABLE", "PRECISION_LOITER_OFF",
+        "PRECISION_LOITER_DISABLE", "SURVEY", "DO_VORONOI", "AUTOLAND"};
+    bool positive = false;
+    const bool positive_request =
+        (msg.IsString() && setBooleanOnString(positive, msg.GetString()) && positive) ||
+        (msg.IsDouble() && msg.GetDouble() == 1.0);
+    if ((key == "ARDU_COMMAND" && flight_commands.count(msg.GetString())) ||
+        ((key == "AUTOLAND" || key == "RETURN_TO_LAUNCH" ||
+          key == "MOOS_MANUAL_OVERRIDE" || key == "HELM_STATUS") && positive_request) ||
+        key == "AUTOPILOT_MODE" ||
+        key == "CHANGE_SPEED" || key == "CHANGE_COURSE" || key == "CHANGE_ALTITUDE" ||
+        (key == "DEAD_MAN_POST_INTERRUPT" &&
+         !m_do_autoland &&
+         m_uav_model.getFlightMode() != mavsdk::Telemetry::FlightMode::Land))
+      m_uav_model.cancelBrakeAndHold("NEW_INTENT_" + key);
+
     if (key == "YAW_ALIGN_REQUEST")
       handleYawAlignmentRequest(msg);
     else if (key == "DESIRED_HEADING") // DESIRED_COURSE comes in as DESIRED_HEADING from pHelm for legacy reasons
@@ -184,6 +205,11 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
 
       if (!helm_status_on)
         cancelEnterGuided("SUPERSEDED_BY_HELM_STATUS_OFF");
+
+      const auto brake_phase = m_uav_model.getBrakeAndHoldStatus().phase;
+      if (!helm_status_on && brake_phase != UAV_Model::BrakePhase::Idle &&
+          brake_phase != UAV_Model::BrakePhase::Canceled)
+        continue; // Already stopping/holding; do not freeze an earlier XYZ.
 
       if (!helm_status_on && m_autopilot_mode != AutopilotHelmMode::HELM_INACTIVE_LOITERING)
       {
@@ -343,7 +369,7 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
 
       static const std::set<std::string> preempting_commands = {
           "FLY_WAYPOINT", "DO_TAKEOFF", "RETURN_TO_LAUNCH", "RETURN",
-          "LOITER", "HOLD_POSITION", "LOITER_FC", "PRECISION_LOITER",
+          "LOITER", "BRAKE_AND_HOLD", "HOLD_POSITION", "LOITER_FC", "PRECISION_LOITER",
           "PRECISION_LOITER_ON", "PRECISION_LOITER_ENABLE",
           "PRECISION_LOITER_OFF", "PRECISION_LOITER_DISABLE", "SURVEY",
           "DO_VORONOI", "AUTOLAND"};
@@ -409,6 +435,22 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
         std::string val = (msg.GetSource() == "pHelmIvP") ? "default" : "here";
         m_do_loiter_pair = std::make_pair(true, val);
         m_loiter_command_name = "LOITER";
+        handled = true;
+      }
+      else if (command == "BRAKE_AND_HOLD")
+      {
+        const double now = MOOSTime();
+        if (!msg.IsString() || msg.GetTime() < m_yaw_bridge_started ||
+            msg.GetTime() > now + 1 || now - msg.GetTime() > 2 ||
+            m_passive || m_do_autoland || m_do_return_to_launch ||
+            m_do_takeoff || m_enter_guided_pending || m_guided_handoff_waiting ||
+            m_do_fly_to_waypoint || m_do_helm_survey || m_do_helm_voronoi ||
+            m_do_loiter_pair.first || m_do_fc_loiter ||
+            m_do_precision_loiter_pair.first || m_yaw_future.valid())
+          m_uav_model.reportCommandResult(
+              "BRAKE_AND_HOLD", "REJECTED", "STALE_OR_BUSY");
+        else if (m_uav_model.requestBrakeAndHold())
+          goToHelmMode(AutopilotHelmMode::HELM_INACTIVE_BRAKING);
         handled = true;
       }
       else if (command == "HOLD_POSITION")
@@ -546,6 +588,8 @@ bool ArduBridge::Iterate()
   /////   - change altitude     (needs to be done immidiately)
   /////   - reset speed to min  (needs to be done immidiately)
   //////////////////////////////////////////////////////////////
+
+  pollBrakeAndHold();
 
   // LAND/RTL may be selected directly at the FC, without a MOOS request.
   // Never let an older readiness probe reclaim Guided from those modes.
@@ -1459,6 +1503,13 @@ bool ArduBridge::buildReport()
          << "; warning: "
          << boolToString(m_guided_ownership_monitor.warningDue(m_curr_time))
          << " (unowned/uncertain grace: 2 MOOS s)" << std::endl;
+  const auto brake = m_uav_model.getBrakeAndHoldStatus();
+  m_msgs << "Brake/Hold Phase: " << UAV_Model::brakePhaseName(brake.phase) << std::endl;
+  m_msgs << "Brake/Hold Reason: " << brake.reason << std::endl;
+  m_msgs << "Brake Native Speed: " << brake.speed_m_s << " m/s" << std::endl;
+  m_msgs << "Brake Motion Age: " << brake.motion_age_s << " real s" << std::endl;
+  m_msgs << "Brake Stopped Samples: " << brake.stopped_samples << "/"
+         << UAV_Model::BRAKE_STOP_SAMPLES << std::endl;
   m_msgs << "-------------------------------------------" << std::endl;
 
   auto uav_isArmed = m_uav_model.isArmed();
@@ -1869,6 +1920,44 @@ void ArduBridge::handleYawAlignmentRequest(const CMOOSMsg &msg)
   });
 }
 
+
+void ArduBridge::pollBrakeAndHold()
+{
+  if (m_do_autoland || m_do_return_to_launch ||
+      m_autopilot_mode == AutopilotHelmMode::HELM_PARKED)
+    m_uav_model.cancelBrakeAndHold("LAND_RTL_OR_PARK_PREEMPTED");
+  const auto status = m_uav_model.getBrakeAndHoldStatus();
+  const std::string state = UAV_Model::brakePhaseName(status.phase) + ":" +
+      status.reason + ":" + std::to_string(status.command_id) + ":" +
+      std::to_string(status.stopped_samples);
+  // Diagnostics are change-driven with a 1 Hz refresh, not six new 10 Hz
+  // streams. Authority/preemption polling remains every Iterate.
+  if (state != m_last_brake_post_state || m_last_brake_post_time < 0 ||
+      m_curr_time - m_last_brake_post_time >= 1) {
+    Notify(m_uav_prefix + "_BRAKE_HOLD_PHASE", UAV_Model::brakePhaseName(status.phase));
+    Notify(m_uav_prefix + "_BRAKE_HOLD_REASON", status.reason);
+    Notify(m_uav_prefix + "_BRAKE_HOLD_SPEED", status.speed_m_s);
+    Notify(m_uav_prefix + "_BRAKE_HOLD_MOTION_AGE", status.motion_age_s);
+    Notify(m_uav_prefix + "_BRAKE_HOLD_SAMPLES", static_cast<double>(status.stopped_samples));
+    Notify(m_uav_prefix + "_BRAKE_HOLD_ID", std::to_string(status.command_id));
+    m_last_brake_post_time = m_curr_time;
+    m_last_brake_post_state = state;
+  }
+  if (status.phase == UAV_Model::BrakePhase::HoldTargetSent &&
+      m_autopilot_mode == AutopilotHelmMode::HELM_INACTIVE_BRAKING) {
+    goToHelmMode(AutopilotHelmMode::HELM_INACTIVE_LOITERING);
+    visualizeLoiterLocation(m_uav_model.getCurrentLoiterLatLon());
+  }
+  else if ((status.phase == UAV_Model::BrakePhase::Failed &&
+            (m_autopilot_mode == AutopilotHelmMode::HELM_INACTIVE_BRAKING ||
+             m_autopilot_mode == AutopilotHelmMode::HELM_INACTIVE_LOITERING)) ||
+           (status.phase == UAV_Model::BrakePhase::Canceled &&
+            m_autopilot_mode == AutopilotHelmMode::HELM_INACTIVE_BRAKING)) {
+    // A native clock reset after hold also revokes legacy refresh/retry;
+    // never reassert a pre-reboot anchor. Newer guidance remains untouched.
+    goToHelmMode(AutopilotHelmMode::HELM_INACTIVE);
+  }
+}
 
 void ArduBridge::postTelemetryUpdate(const std::string &prefix)
 {
@@ -2581,6 +2670,7 @@ void ArduBridge::goToHelmMode(AutopilotHelmMode to_state, bool fromGCS)
     break;
 
   case AutopilotHelmMode::HELM_INACTIVE_LOITERING:
+  case AutopilotHelmMode::HELM_INACTIVE_BRAKING:
   case AutopilotHelmMode::HELM_INACTIVE:
     visualizeCourseHoldTarget(false);
     break;
@@ -2605,6 +2695,8 @@ std::string ArduBridge::controlAuthorityToString(AutopilotHelmMode state) const
   {
   case AutopilotHelmMode::HELM_PARKED:
     return "FC/manual - Helm parked";
+  case AutopilotHelmMode::HELM_INACTIVE_BRAKING:
+    return "Flight controller - native zero-velocity braking";
   case AutopilotHelmMode::HELM_INACTIVE:
   case AutopilotHelmMode::HELM_INACTIVE_LOITERING:
     return "Flight controller - Helm inactive";
