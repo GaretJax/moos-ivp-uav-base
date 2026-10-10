@@ -6,7 +6,6 @@
 /************************************************************/
 
 #include <iomanip>
-#include <iterator>
 #include <algorithm>
 #include <cmath>
 #include "MBUtils.h"
@@ -618,6 +617,7 @@ bool ArduBridge::Iterate()
            m_curr_time);
     postTelemetryUpdate(m_uav_prefix);
     postHealthUpdate();
+    postRangefinderUpdate();
     postLandingTargetUpdate();
     AppCastingMOOSApp::PostReport();
     return true;
@@ -1169,6 +1169,7 @@ bool ArduBridge::Iterate()
   postTelemetryUpdate(m_uav_prefix);
   postHealthUpdate();
   postHelmSetpointStatus();
+  postRangefinderUpdate();
   postLandingTargetUpdate();
   m_uav_model.pollCommandConfirmations();
   postCommandResult();
@@ -1641,6 +1642,9 @@ bool ArduBridge::buildReport()
   auto uav_raw_gps = m_uav_model.getRawGps();
   auto uav_hasLandedState = m_uav_model.hasLandedStateTelemetry();
   auto uav_landedState = m_uav_model.getLandedState();
+  auto uav_hasRangefinder = m_uav_model.hasRangefinderTelemetry();
+  auto uav_hasFreshRangefinder = m_uav_model.hasFreshRangefinderTelemetry();
+  auto uav_rangefinder = m_uav_model.getRangefinderTelemetry();
   auto uav_hasLandingTarget = m_uav_model.hasLandingTargetTelemetry();
   auto uav_hasFreshLandingTarget = m_uav_model.hasFreshLandingTargetTelemetry();
   auto uav_landingTarget = m_uav_model.getLandingTargetTelemetry();
@@ -1765,6 +1769,26 @@ bool ArduBridge::buildReport()
     field("Sample Age");
     m_msgs << doubleToStringX(m_uav_model.getLandedStateTelemetryAge(), sdigits)
            << " s" << std::endl;
+  }
+
+  section("Rangefinder");
+  field("Received");
+  m_msgs << boolToString(uav_hasRangefinder) << std::endl;
+  field("Fresh");
+  m_msgs << boolToString(uav_hasFreshRangefinder) << std::endl;
+  if (uav_hasRangefinder)
+  {
+    field("Distance");
+    m_msgs << uav_rangefinder.sensor.current_distance_m << " m" << std::endl;
+    field("Minimum / Maximum");
+    m_msgs << uav_rangefinder.sensor.minimum_distance_m << " / "
+           << uav_rangefinder.sensor.maximum_distance_m << " m" << std::endl;
+    field("Orientation R/P/Y");
+    m_msgs << uav_rangefinder.sensor.orientation.roll_deg << " / "
+           << uav_rangefinder.sensor.orientation.pitch_deg << " / "
+           << uav_rangefinder.sensor.orientation.yaw_deg << " deg" << std::endl;
+    field("Sample Age");
+    m_msgs << m_uav_model.getRangefinderTelemetryAge() << " s" << std::endl;
   }
 
   section("MAVLink Landing Target");
@@ -2150,51 +2174,53 @@ void ArduBridge::postTelemetryUpdate(const std::string &prefix)
     return false;
   };
 
-  double lat = m_uav_model.getLatitude();
-  double lon = m_uav_model.getLongitude();
-
-  if (!lat || !lon)
-  {
-    m_warning_system_ptr->queue_monitorWarningForXseconds("NAN Values at lat or long", 5);
-    return;
-  }
-
-  NotifyIfNonNan(prefix + "_LAT", lat, m_curr_time);
-  NotifyIfNonNan(prefix + "_LON", lon, m_curr_time);
-
-  auto uav_isHoldCourseGuided = m_uav_model.isHoldCourseGuidedSet();
-
-  auto uav_SOG = m_uav_model.getSOG();
+  // Attitude is independent of global position. Publish it even when an indoor
+  // vehicle has no GPS fix or global EKF origin.
   const auto attitude = m_uav_model.getAttitudeTelemetry();
   const double attitude_age = m_uav_model.getAttitudeTelemetryAge(attitude);
   const bool attitude_available = attitude.received_s >= 0 &&
-      std::isfinite(attitude.euler.roll_deg) && std::isfinite(attitude.euler.pitch_deg) &&
+      std::isfinite(attitude.euler.roll_deg) &&
+      std::isfinite(attitude.euler.pitch_deg) &&
       std::isfinite(attitude.euler.yaw_deg);
-  auto uav_heading = angle360(attitude.euler.yaw_deg);
-  auto uav_COG = m_uav_model.getCOG();
-  auto uav_altitude_agl = m_uav_model.getAltitudeAGL();
-
-  auto XY = transformLatLonToXY({lat, lon});
-
-  NotifyIfNonNan(prefix + "_X", XY.x(), m_curr_time);
-  NotifyIfNonNan(prefix + "_Y", XY.y(), m_curr_time);
-
-  visualizeCourseHoldTarget(isHelmCommanding() || uav_isHoldCourseGuided);
-
-  NotifyIfNonNan(prefix + "_SPEED", uav_SOG, m_curr_time);
-
-  NotifyIfNonNan(prefix + "_ALTITUDE", uav_altitude_agl, m_curr_time);
-  NotifyIfNonNan(prefix + "_ALTITUDE_MSL", m_uav_model.getAltitudeMSL(), m_curr_time);
+  const double uav_heading = angle360(attitude.euler.yaw_deg);
   NotifyIfNonNan(prefix + "_YAW", uav_heading, m_curr_time);
   NotifyIfNonNan(prefix + "_ROLL", attitude.euler.roll_deg, m_curr_time);
   NotifyIfNonNan(prefix + "_PITCH", attitude.euler.pitch_deg, m_curr_time);
-  Notify(prefix + "_ATTITUDE_AVAILABLE", attitude_available ? 1.0 : 0.0, m_curr_time);
+  Notify(prefix + "_ATTITUDE_AVAILABLE", attitude_available ? 1.0 : 0.0,
+         m_curr_time);
   Notify(prefix + "_ATTITUDE_AGE", attitude_age, m_curr_time);
-  Notify(prefix + "_ATTITUDE_SAMPLE_TIME", attitude.received_moos_time, m_curr_time);
-  Notify(prefix + "_ATTITUDE_TIME_USEC", static_cast<double>(attitude.euler.timestamp_us), m_curr_time);
-  Notify(prefix + "_ATTITUDE_SAMPLES", m_uav_model.getAttitudeSamples(), m_curr_time);
+  Notify(prefix + "_ATTITUDE_SAMPLE_TIME", attitude.received_moos_time,
+         m_curr_time);
+  Notify(prefix + "_ATTITUDE_TIME_USEC",
+         static_cast<double>(attitude.euler.timestamp_us), m_curr_time);
+  Notify(prefix + "_ATTITUDE_SAMPLES", m_uav_model.getAttitudeSamples(),
+         m_curr_time);
+
+  const double uav_altitude_agl = m_uav_model.getAltitudeAGL();
+  NotifyIfNonNan(prefix + "_SPEED", m_uav_model.getSOG(), m_curr_time);
+  NotifyIfNonNan(prefix + "_ALTITUDE", uav_altitude_agl, m_curr_time);
+  NotifyIfNonNan(prefix + "_ALTITUDE_MSL", m_uav_model.getAltitudeMSL(),
+                 m_curr_time);
   NotifyIfNonNan(prefix + "_DEPTH", -uav_altitude_agl, m_curr_time);
 
+  const double lat = m_uav_model.getLatitude();
+  const double lon = m_uav_model.getLongitude();
+  const bool position_available = std::isfinite(lat) && std::isfinite(lon) &&
+                                  std::fabs(lat) <= 90 &&
+                                  std::fabs(lon) <= 180;
+  if (!position_available)
+    return;
+
+  NotifyIfNonNan(prefix + "_LAT", lat, m_curr_time);
+  NotifyIfNonNan(prefix + "_LON", lon, m_curr_time);
+  const auto XY = transformLatLonToXY({lat, lon});
+  NotifyIfNonNan(prefix + "_X", XY.x(), m_curr_time);
+  NotifyIfNonNan(prefix + "_Y", XY.y(), m_curr_time);
+
+  visualizeCourseHoldTarget(isHelmCommanding() ||
+                            m_uav_model.isHoldCourseGuidedSet());
+
+  const double uav_COG = m_uav_model.getCOG();
   // Body heading and course over ground are distinct, especially in hover.
   // Both bearings use the same local grid as _X/_Y; _YAW stays true-north.
   const double grid_north = gridBearingOfTrueNorth(lat, lon);
@@ -2277,6 +2303,43 @@ void ArduBridge::postHealthUpdate()
     Notify(m_uav_prefix + "_LANDED_STATE", UAV_Model::landedStateToString(m_uav_model.getLandedState()), m_curr_time);
     Notify(m_uav_prefix + "_LANDED_STATE_AGE", m_uav_model.getLandedStateTelemetryAge(), m_curr_time);
   }
+}
+
+//---------------------------------------------------------
+// Procedure: postRangefinderUpdate()
+
+void ArduBridge::postRangefinderUpdate()
+{
+  const bool received = m_uav_model.hasRangefinderTelemetry();
+  const auto sample = m_uav_model.getRangefinderTelemetry();
+  const bool available = received &&
+                         m_uav_model.hasFreshRangefinderTelemetry() &&
+                         std::isfinite(sample.sensor.current_distance_m) &&
+                         sample.sensor.current_distance_m >= 0;
+  Notify(m_uav_prefix + "_RANGEFINDER_AVAILABLE", available ? 1.0 : 0.0,
+         m_curr_time);
+  if (!received)
+    return;
+
+  Notify(m_uav_prefix + "_RANGEFINDER_AGE",
+         m_uav_model.getRangefinderTelemetryAge(), m_curr_time);
+  const auto postFinite = [this](const std::string &key, double value)
+  {
+    if (std::isfinite(value))
+      Notify(key, value, m_curr_time);
+  };
+  postFinite(m_uav_prefix + "_RANGEFINDER_DISTANCE",
+             sample.sensor.current_distance_m);
+  postFinite(m_uav_prefix + "_RANGEFINDER_MIN_DISTANCE",
+             sample.sensor.minimum_distance_m);
+  postFinite(m_uav_prefix + "_RANGEFINDER_MAX_DISTANCE",
+             sample.sensor.maximum_distance_m);
+  postFinite(m_uav_prefix + "_RANGEFINDER_ORIENTATION_ROLL",
+             sample.sensor.orientation.roll_deg);
+  postFinite(m_uav_prefix + "_RANGEFINDER_ORIENTATION_PITCH",
+             sample.sensor.orientation.pitch_deg);
+  postFinite(m_uav_prefix + "_RANGEFINDER_ORIENTATION_YAW",
+             sample.sensor.orientation.yaw_deg);
 }
 
 //---------------------------------------------------------

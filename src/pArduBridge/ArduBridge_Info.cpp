@@ -180,6 +180,11 @@ void showInterfaceAndExit()
   blk("  UAV_ATTITUDE_SAMPLE_TIME   // Original native receipt time, MOOS seconds (not repost time) ");
   blk("  UAV_ATTITUDE_TIME_USEC     // Original FC attitude boot timestamp, microseconds ");
   blk("  UAV_ATTITUDE_SAMPLES       // Atomic boot_usec,roll,pitch,yaw,receipt_moos;... native window ");
+  blk("  UAV_RANGEFINDER_AVAILABLE  // 1 for a finite reading no more than 2 real seconds old ");
+  blk("  UAV_RANGEFINDER_AGE        // Real seconds since the most recent distance-sensor sample ");
+  blk("  UAV_RANGEFINDER_DISTANCE   // Current sensor distance, metres ");
+  blk("  UAV_RANGEFINDER_MIN_DISTANCE, UAV_RANGEFINDER_MAX_DISTANCE // Sensor limits, metres ");
+  blk("  UAV_RANGEFINDER_ORIENTATION_ROLL/PITCH/YAW // Native sensor orientation, degrees ");
   blk("  UAV_YAW_ALIGN_RESULT       // id#heading#status#detail; ACCEPTED means FC ACK, not aligned ");
   blk("  UAV_GPS_AVAILABLE          // 1 after GPS telemetry is received; fix may be invalid ");
   blk("  UAV_GPS_FIX_TYPE           // 0=No GPS,1=No Fix,2=2D,3=3D,...6=RTK fixed          ");

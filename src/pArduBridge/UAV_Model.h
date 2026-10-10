@@ -55,6 +55,7 @@ public:
   static constexpr double TAKEOFF_COMPLETION_TIMEOUT_S = 60.0;
   static constexpr double TAKEOFF_ALTITUDE_TOLERANCE_M = 0.5;
   static constexpr double LANDING_TARGET_MAX_AGE_S = 0.5;
+  static constexpr double RANGEFINDER_MAX_AGE_S = 2.0;
 
   enum class PolicyAction
   {
@@ -108,6 +109,12 @@ public:
     std::string command;
     std::string status;
     std::string detail;
+  };
+
+  struct RangefinderTelemetry
+  {
+    mavsdk::Telemetry::DistanceSensor sensor{};
+    double received_s = -1;
   };
 
   struct LandingTargetTelemetry
@@ -304,6 +311,10 @@ public:
   bool hasLandedStateTelemetry() const { return m_landed_state_received; }
   mavsdk::Telemetry::LandedState getLandedState() const { return mts_landed_state.get(); }
   double getLandedStateTelemetryAge() const;
+  bool hasRangefinderTelemetry() const { return m_rangefinder_received; }
+  bool hasFreshRangefinderTelemetry() const;
+  RangefinderTelemetry getRangefinderTelemetry() const { return mts_rangefinder.get(); }
+  double getRangefinderTelemetryAge() const;
   bool hasLandingTargetTelemetry() const { return m_landing_target_received; }
   bool hasFreshLandingTargetTelemetry() const;
   LandingTargetTelemetry getLandingTargetTelemetry() const { return mts_landing_target.get(); }
@@ -532,6 +543,7 @@ protected:
   std::atomic<double> m_last_gps_update_s;
   std::atomic<bool> m_landed_state_received;
   std::atomic<double> m_last_landed_state_update_s;
+  std::atomic<bool> m_rangefinder_received{false};
   std::atomic<bool> m_landing_target_received;
   std::atomic<double> m_last_landing_target_update_s;
   ThreadSafeVariable<mavsdk::Telemetry::Position> mts_position;
@@ -546,6 +558,7 @@ protected:
   ThreadSafeVariable<mavsdk::Telemetry::GpsInfo> mts_gps_info;
   ThreadSafeVariable<mavsdk::Telemetry::RawGps> mts_raw_gps;
   ThreadSafeVariable<mavsdk::Telemetry::LandedState> mts_landed_state;
+  ThreadSafeVariable<RangefinderTelemetry> mts_rangefinder{RangefinderTelemetry()};
   ThreadSafeVariable<LandingTargetTelemetry> mts_landing_target;
 
   ThreadSafeVariable<RallyStatus> mts_rally;

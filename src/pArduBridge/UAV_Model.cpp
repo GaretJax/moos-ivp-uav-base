@@ -683,6 +683,15 @@ bool UAV_Model::subscribeToTelemetry(bool request_message_rates)
                                        m_battery_received = true;
                                      });
 
+  m_telemetry_ptr->subscribe_distance_sensor(
+      [this](mavsdk::Telemetry::DistanceSensor sensor)
+      {
+        const double now_s = std::chrono::duration<double>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        mts_rangefinder.set({sensor, now_s});
+        m_rangefinder_received = true;
+      });
+
   m_telemetry_ptr->subscribe_flight_mode([&](mavsdk::Telemetry::FlightMode flight_mode)
                                          { mts_flight_mode = flight_mode; });
 
@@ -877,6 +886,23 @@ double UAV_Model::getLandedStateTelemetryAge() const
   const double now_s = std::chrono::duration<double>(
       std::chrono::steady_clock::now().time_since_epoch()).count();
   return std::max(0.0, now_s - m_last_landed_state_update_s.load());
+}
+
+double UAV_Model::getRangefinderTelemetryAge() const
+{
+  if (!m_rangefinder_received)
+    return -1.0;
+
+  const auto sample = mts_rangefinder.get();
+  const double now_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  return std::max(0.0, now_s - sample.received_s);
+}
+
+bool UAV_Model::hasFreshRangefinderTelemetry() const
+{
+  const double age_s = getRangefinderTelemetryAge();
+  return age_s >= 0.0 && age_s <= RANGEFINDER_MAX_AGE_S;
 }
 
 double UAV_Model::getLandingTargetTelemetryAge() const
