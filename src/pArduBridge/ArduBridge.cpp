@@ -199,12 +199,19 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       Logger::info("OnNewMail MOOS_MANUAL_OVERRIDE: " + msg.GetString() + " from " + msg.GetSource());
       if (msg.GetString() == "true")
       {
-        // A self-post is how the bridge mirrors its parked Helm state. Only
-        // an external manual-override request carries the legacy RTL policy.
+        // A self-post only mirrors Helm parking. An external park request
+        // retains legacy RTL unless native telemetry proves the aircraft is
+        // already grounded and disarmed. Never infer this from altitude/FSM.
+        // Do not clear an independent pending RTL (especially deadman RTL).
         if (msg.GetSource() != GetAppName())
         {
-          m_force_native_rtl = false;
-          m_do_return_to_launch = true;
+          if (!m_uav_model.hasFreshGroundedDisarmedTelemetry())
+          {
+            m_force_native_rtl = false;
+            m_do_return_to_launch = true;
+          }
+          else
+            reportEvent("Helm parked on ground/disarmed: no legacy RTL requested");
         }
         goToHelmMode(AutopilotHelmMode::HELM_PARKED, true);
       }

@@ -596,8 +596,14 @@ bool UAV_Model::requestDisarmAsync() const
 bool UAV_Model::subscribeToTelemetry(bool request_message_rates)
 {
 
-  m_telemetry_ptr->subscribe_armed([&](bool is_armed)
-                                   { m_is_armed = is_armed; });
+  m_telemetry_ptr->subscribe_armed([this](bool is_armed)
+  {
+    m_is_armed = is_armed;
+    const double now_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    // MAVSDK publishes this callback on each FC heartbeat, not only changes.
+    mts_armed_snapshot.set({is_armed, now_s});
+  });
 
   m_telemetry_ptr->subscribe_health_all_ok([&, this](bool is_health_all_ok)
                                            { this->m_health_all_ok = is_health_all_ok; });
@@ -774,6 +780,23 @@ bool UAV_Model::hasValidBatteryTelemetry() const
   return std::isfinite(battery.remaining_percent) &&
          battery.remaining_percent >= 0.0f &&
          battery.remaining_percent <= 100.0f;
+}
+
+bool UAV_Model::hasFreshGroundedDisarmedTelemetry() const
+{
+  const auto armed = mts_armed_snapshot.get();
+  const double now_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  const double armed_age = now_s - armed.received_s;
+  const double landed_age = getLandedStateTelemetryAge();
+  return isFlightControllerConnected() &&
+         std::isfinite(armed.received_s) && armed.received_s >= 0 &&
+         std::isfinite(armed_age) && armed_age >= 0 &&
+         armed_age <= LANDED_STATE_TELEMETRY_MAX_AGE_S &&
+         !armed.armed && !isArmed() &&
+         hasLandedStateTelemetry() && std::isfinite(landed_age) &&
+         landed_age >= 0 && landed_age <= LANDED_STATE_TELEMETRY_MAX_AGE_S &&
+         getLandedState() == mavsdk::Telemetry::LandedState::OnGround;
 }
 
 double UAV_Model::getLandedStateTelemetryAge() const

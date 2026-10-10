@@ -225,6 +225,10 @@ public:
                                const std::string &detail,
                                uint64_t command_id = 0) const;
   void pollCommandConfirmations();
+  bool isFlightControllerConnected() const
+  {
+    return m_system_ptr && m_system_ptr->is_connected();
+  }
 
   void setNextWaypointLatLon(const XYPoint &wp) { mts_next_waypoint_coord.set(wp); }
   void setLoiterLocationLatLon(const XYPoint &wp) { mts_current_loiter_coord.set(wp); }
@@ -261,6 +265,14 @@ public:
   double getLandingTargetTelemetryAge() const;
   static std::string landedStateToString(mavsdk::Telemetry::LandedState landed_state);
   bool isArmed() const { return (m_is_armed); }
+  // A park-only override requires affirmative, fresh native ground/disarm
+  // evidence; default false armed state is not evidence of disarming.
+  bool hasFreshGroundedDisarmedTelemetry() const;
+  struct ArmedTelemetry
+  {
+    bool armed = false;
+    double received_s = -1;
+  };
   // Altitude-threshold inference retained until the command guards are revised.
   bool isInAir() const { return (m_in_air); }
   mavsdk::Telemetry::FlightMode getFlightMode() const { return (mts_flight_mode.get()); }
@@ -435,6 +447,7 @@ protected:
   std::atomic<bool> m_battery_received;
   std::atomic<double> m_last_battery_update_s;
   std::atomic<bool> m_is_armed;
+  ThreadSafeVariable<ArmedTelemetry> mts_armed_snapshot{ArmedTelemetry()};
   std::atomic<bool> m_in_air;
 
   // Exiting GUIDED returns aircraft to normal behaviour defined elsewhere
