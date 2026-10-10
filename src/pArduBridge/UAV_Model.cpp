@@ -1485,10 +1485,20 @@ bool UAV_Model::commandCopterHelmSetpoint(double course_deg,
                                           double speed_m_s,
                                           double altitude_agl_m)
 {
-  if (!isCopter() || !m_in_air)
+  // The legacy m_in_air flag uses a 5 m altitude threshold. A Copter remains
+  // airborne during low-altitude Guided flight; use its native landed state
+  // instead, without permitting stale telemetry or ground/landing setpoints.
+  const double landed_age_s = getLandedStateTelemetryAge();
+  const bool airborne =
+      hasLandedStateTelemetry() && std::isfinite(landed_age_s) &&
+      landed_age_s >= 0.0 &&
+      landed_age_s <= LANDED_STATE_TELEMETRY_MAX_AGE_S &&
+      getLandedState() == mavsdk::Telemetry::LandedState::InAir;
+  if (!isCopter() || !airborne)
   {
     m_warning_system_ptr->queue_monitorWarningForXseconds(
-        "Copter Helm setpoint requires an airborne Copter", WARNING_DURATION);
+        "Copter Helm setpoint requires fresh airborne Copter telemetry",
+        WARNING_DURATION);
     return false;
   }
 
