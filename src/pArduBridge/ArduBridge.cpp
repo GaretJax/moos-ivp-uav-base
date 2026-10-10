@@ -5,6 +5,7 @@
 /*    DATE: September 9th, 2024                             */
 /************************************************************/
 
+#include <iomanip>
 #include <iterator>
 #include <algorithm>
 #include <cmath>
@@ -1511,43 +1512,67 @@ void ArduBridge::registerVariables()
 bool ArduBridge::buildReport()
 {
   const int sdigits = 2;
+  constexpr int label_width = 31;
+  const auto field = [this](const std::string &label)
+  {
+    m_msgs << std::right << std::setw(label_width) << (label + ":") << " "
+           << std::left;
+  };
+  const auto section = [this](const std::string &title)
+  {
+    m_msgs << std::endl
+           << title << std::endl
+           << "--------------------------------------------" << std::endl;
+  };
+
   m_msgs << "============================================" << std::endl;
-  m_msgs << "File: pArduBridge                           " << std::endl;
+  m_msgs << "pArduBridge" << std::endl;
   m_msgs << "============================================" << std::endl;
 
-  m_msgs << " -------- Configuration Settings -----------" << std::endl;
-  m_msgs << "ArduPilot URL: " << m_cli_arg.get_path() << std::endl;
-  m_msgs << "ArduPilot Port: " << m_cli_arg.get_port() << std::endl;
-  m_msgs << "ArduPilot Protocol: " << protocol2str.at(m_cli_arg.get_protocol()) << std::endl;
-  m_msgs << "Vehicle Type: " << m_uav_model.getVehicleTypeString() << std::endl;
-  m_msgs << "Passive Mode: " << boolToString(m_passive) << std::endl;
+  section("Configuration Settings");
+  field("ArduPilot URL");
+  m_msgs << m_cli_arg.get_path() << std::endl;
+  field("ArduPilot Port");
+  m_msgs << m_cli_arg.get_port() << std::endl;
+  field("ArduPilot Protocol");
+  m_msgs << protocol2str.at(m_cli_arg.get_protocol()) << std::endl;
+  field("Vehicle Type");
+  m_msgs << m_uav_model.getVehicleTypeString() << std::endl;
+  field("Passive Mode");
+  m_msgs << boolToString(m_passive) << std::endl;
+
   if (m_passive)
-    m_msgs << "Passive State: "
-           << UAV_Model::passiveStateToString(m_uav_model.getPassiveState()) << std::endl;
+  {
+    field("Passive State");
+    m_msgs << UAV_Model::passiveStateToString(m_uav_model.getPassiveState())
+           << std::endl;
+  }
+
   const auto telemetry_rates = m_uav_model.getTelemetryRates();
-  m_msgs << "Telemetry Position Rate: " << telemetry_rates.position_hz << " Hz" << std::endl;
-  m_msgs << "Telemetry Attitude Rate: " << telemetry_rates.attitude_hz << " Hz" << std::endl;
-  m_msgs << "Telemetry Velocity Rate: " << telemetry_rates.velocity_hz << " Hz" << std::endl;
-  m_msgs << "Precision Loiter Enters Loiter: " << boolToString(m_precision_loiter_enter_loiter) << std::endl;
-  m_msgs << "Helm Setpoint Timeout: " << m_helm_setpoint_timeout << " s" << std::endl;
-  m_msgs << "Guided Mode Timeout: " << m_enter_guided_timeout << " s" << std::endl;
-  std::string sim_mode = m_is_simulation ? "SITL" : "No Simulation";
-  m_msgs << "Simulation Mode: " << sim_mode << std::endl;
-  m_msgs << "Control Authority: " << controlAuthorityToString(m_autopilot_mode) << std::endl;
-  m_msgs << "Helm Mode: " << helmModeToString(m_autopilot_mode) << std::endl;
-  m_msgs << "Guided Ownership Monitor: "
-         << GuidedOwnershipMonitor::stateName(m_guided_ownership_monitor.state())
+  field("Telemetry Position Rate");
+  m_msgs << telemetry_rates.position_hz << " Hz" << std::endl;
+  field("Telemetry Attitude Rate");
+  m_msgs << telemetry_rates.attitude_hz << " Hz" << std::endl;
+  field("Telemetry Velocity Rate");
+  m_msgs << telemetry_rates.velocity_hz << " Hz" << std::endl;
+  field("Precision Loiter Enters Loiter");
+  m_msgs << boolToString(m_precision_loiter_enter_loiter) << std::endl;
+  field("Helm Setpoint Timeout");
+  m_msgs << m_helm_setpoint_timeout << " s" << std::endl;
+  field("Guided Mode Timeout");
+  m_msgs << m_enter_guided_timeout << " s" << std::endl;
+  field("Simulation Mode");
+  m_msgs << (m_is_simulation ? "SITL" : "No Simulation") << std::endl;
+  field("Control Authority");
+  m_msgs << controlAuthorityToString(m_autopilot_mode) << std::endl;
+  field("Bridge Helm Authority");
+  m_msgs << helmModeToString(m_autopilot_mode)
+         << " (not pHelmIvP PARK/DRIVE)" << std::endl;
+  field("Guided Ownership Monitor");
+  m_msgs << GuidedOwnershipMonitor::stateName(m_guided_ownership_monitor.state())
          << "; warning: "
          << boolToString(m_guided_ownership_monitor.warningDue(m_curr_time))
          << " (unowned/uncertain grace: 2 MOOS s)" << std::endl;
-  const auto brake = m_uav_model.getBrakeAndHoldStatus();
-  m_msgs << "Brake/Hold Phase: " << UAV_Model::brakePhaseName(brake.phase) << std::endl;
-  m_msgs << "Brake/Hold Reason: " << brake.reason << std::endl;
-  m_msgs << "Brake Native Speed: " << brake.speed_m_s << " m/s" << std::endl;
-  m_msgs << "Brake Motion Age: " << brake.motion_age_s << " real s" << std::endl;
-  m_msgs << "Brake Stopped Samples: " << brake.stopped_samples << "/"
-         << UAV_Model::BRAKE_STOP_SAMPLES << std::endl;
-  m_msgs << "-------------------------------------------" << std::endl;
 
   auto uav_isArmed = m_uav_model.isArmed();
   auto uav_isHealthy = m_uav_model.isHealthy();
@@ -1569,117 +1594,179 @@ bool ArduBridge::buildReport()
   auto uav_minAirSpeed = m_uav_model.getMinAirSpeed();
   auto uav_maxAirSpeed = m_uav_model.getMaxAirSpeed();
 
-  m_msgs << "UAV States: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "           Is Armed: " << boolToString(uav_isArmed) << std::endl;
-  m_msgs << "         Is Healthy: " << boolToString(uav_isHealthy) << std::endl;
-  m_msgs << "    Health Available: " << boolToString(uav_hasHealth) << std::endl;
-  m_msgs << "In Air (altitude inferred): " << boolToString(uav_isInAir) << std::endl;
-  m_msgs << "        Flight Mode: " << uav_flightMode << std::endl;
+  section("UAV State");
+  field("Armed");
+  m_msgs << boolToString(uav_isArmed) << std::endl;
+  field("Healthy");
+  m_msgs << boolToString(uav_isHealthy) << std::endl;
+  field("Health Available");
+  m_msgs << boolToString(uav_hasHealth) << std::endl;
+  field("In Air (altitude inferred)");
+  m_msgs << boolToString(uav_isInAir) << std::endl;
+  field("Flight Mode");
+  m_msgs << uav_flightMode << std::endl;
 
-  m_msgs << std::endl;
-  m_msgs << "Health Details: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "                Gyro: " << boolToString(uav_health.is_gyrometer_calibration_ok) << std::endl;
-  m_msgs << "               Accel: " << boolToString(uav_health.is_accelerometer_calibration_ok) << std::endl;
-  m_msgs << "                 Mag: " << boolToString(uav_health.is_magnetometer_calibration_ok) << std::endl;
-  m_msgs << "Local Position (MAVSDK): " << boolToString(uav_health.is_local_position_ok) << std::endl;
-  m_msgs << "Global Position (MAVSDK): " << boolToString(uav_health.is_global_position_ok) << std::endl;
-  m_msgs << "       Home Position: " << boolToString(uav_health.is_home_position_ok) << std::endl;
-  m_msgs << "             Armable: " << boolToString(uav_health.is_armable) << std::endl;
+  section("Health Details");
+  field("Gyro");
+  m_msgs << boolToString(uav_health.is_gyrometer_calibration_ok) << std::endl;
+  field("Accel");
+  m_msgs << boolToString(uav_health.is_accelerometer_calibration_ok) << std::endl;
+  field("Mag");
+  m_msgs << boolToString(uav_health.is_magnetometer_calibration_ok) << std::endl;
+  field("Local Position (MAVSDK)");
+  m_msgs << boolToString(uav_health.is_local_position_ok) << std::endl;
+  field("Global Position (MAVSDK)");
+  m_msgs << boolToString(uav_health.is_global_position_ok) << std::endl;
+  field("Home Position");
+  m_msgs << boolToString(uav_health.is_home_position_ok) << std::endl;
+  field("Armable");
+  m_msgs << boolToString(uav_health.is_armable) << std::endl;
   if (uav_hasHealth)
-    m_msgs << "Health Sample Age (s): " << doubleToStringX(m_uav_model.getHealthTelemetryAge(), sdigits) << std::endl;
+  {
+    field("Health Sample Age");
+    m_msgs << doubleToStringX(m_uav_model.getHealthTelemetryAge(), sdigits)
+           << " s" << std::endl;
+  }
 
-  m_msgs << std::endl;
-  m_msgs << "Battery: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "           Available: " << boolToString(uav_hasBattery) << std::endl;
-  m_msgs << "               Valid: " << boolToString(m_uav_model.hasValidBatteryTelemetry()) << std::endl;
+  section("Battery");
+  field("Available");
+  m_msgs << boolToString(uav_hasBattery) << std::endl;
+  field("Valid");
+  m_msgs << boolToString(m_uav_model.hasValidBatteryTelemetry()) << std::endl;
   if (uav_hasBattery)
   {
-    m_msgs << "     Remaining (%): " << doubleToStringX(uav_battery.remaining_percent, sdigits) << std::endl;
-    m_msgs << "         Voltage (V): " << doubleToStringX(uav_battery.voltage_v, sdigits) << std::endl;
-    m_msgs << "       Sample Age (s): " << doubleToStringX(m_uav_model.getBatteryTelemetryAge(), sdigits) << std::endl;
+    field("Remaining");
+    m_msgs << doubleToStringX(uav_battery.remaining_percent, sdigits) << " %"
+           << std::endl;
+    field("Voltage");
+    m_msgs << doubleToStringX(uav_battery.voltage_v, sdigits) << " V"
+           << std::endl;
+    field("Sample Age");
+    m_msgs << doubleToStringX(m_uav_model.getBatteryTelemetryAge(), sdigits)
+           << " s" << std::endl;
   }
 
   const auto arm_policy = m_uav_model.getArmPolicyDecision();
   const auto disarm_policy = m_uav_model.getDisarmPolicyDecision();
   const auto land_policy = m_uav_model.getLandPolicyDecision();
-  m_msgs << "    ARM Policy Ready: " << boolToString(arm_policy.action == UAV_Model::PolicyAction::Submit) << std::endl;
-  m_msgs << "   ARM Policy Reason: " << arm_policy.reason << std::endl;
-  m_msgs << " DISARM Policy Ready: " << boolToString(disarm_policy.action == UAV_Model::PolicyAction::Submit) << std::endl;
-  m_msgs << "DISARM Policy Reason: " << disarm_policy.reason << std::endl;
-  m_msgs << "   LAND Policy Ready: " << boolToString(land_policy.action == UAV_Model::PolicyAction::Submit) << std::endl;
-  m_msgs << "  LAND Policy Reason: " << land_policy.reason << std::endl;
-  m_msgs << " Last Command Result: " << m_last_command_result << std::endl;
+  const auto brake = m_uav_model.getBrakeAndHoldStatus();
+  section("Route Brake / Hold");
+  field("Phase");
+  m_msgs << UAV_Model::brakePhaseName(brake.phase) << std::endl;
+  field("Reason");
+  m_msgs << brake.reason << std::endl;
+  field("Native Horizontal Speed");
+  m_msgs << brake.speed_m_s << " m/s" << std::endl;
+  field("Native Motion Age");
+  m_msgs << brake.motion_age_s << " real s" << std::endl;
+  field("Distinct Stopped Samples");
+  m_msgs << brake.stopped_samples << "/" << UAV_Model::BRAKE_STOP_SAMPLES << std::endl;
 
-  m_msgs << std::endl;
-  m_msgs << "GPS Details: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "           Available: " << boolToString(uav_hasGps) << std::endl;
+  section("Command Policies");
+  field("ARM Ready");
+  m_msgs << boolToString(arm_policy.action == UAV_Model::PolicyAction::Submit)
+         << std::endl;
+  field("ARM Reason");
+  m_msgs << arm_policy.reason << std::endl;
+  field("DISARM Ready");
+  m_msgs << boolToString(disarm_policy.action == UAV_Model::PolicyAction::Submit)
+         << std::endl;
+  field("DISARM Reason");
+  m_msgs << disarm_policy.reason << std::endl;
+  field("LAND Ready");
+  m_msgs << boolToString(land_policy.action == UAV_Model::PolicyAction::Submit)
+         << std::endl;
+  field("LAND Reason");
+  m_msgs << land_policy.reason << std::endl;
+  field("Last Command Result");
+  m_msgs << m_last_command_result << std::endl;
+
+  section("GPS Details");
+  field("Available");
+  m_msgs << boolToString(uav_hasGps) << std::endl;
   if (uav_hasGps)
   {
-    m_msgs << "             Fix Type: " << uav_gps_info.fix_type << std::endl;
-    m_msgs << "           Satellites: " << uav_gps_info.num_satellites << std::endl;
-    m_msgs << "                 HDOP: " << doubleToStringX(uav_raw_gps.hdop, sdigits) << std::endl;
-    m_msgs << "                 VDOP: " << doubleToStringX(uav_raw_gps.vdop, sdigits) << std::endl;
-    m_msgs << "        Sample Age (s): " << doubleToStringX(m_uav_model.getGpsTelemetryAge(), sdigits) << std::endl;
+    field("Fix Type");
+    m_msgs << uav_gps_info.fix_type << std::endl;
+    field("Satellites");
+    m_msgs << uav_gps_info.num_satellites << std::endl;
+    field("HDOP");
+    m_msgs << doubleToStringX(uav_raw_gps.hdop, sdigits) << std::endl;
+    field("VDOP");
+    m_msgs << doubleToStringX(uav_raw_gps.vdop, sdigits) << std::endl;
+    field("Sample Age");
+    m_msgs << doubleToStringX(m_uav_model.getGpsTelemetryAge(), sdigits)
+           << " s" << std::endl;
   }
 
-  m_msgs << std::endl;
-  m_msgs << "Flight Controller Landed State: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "           Available: " << boolToString(uav_hasLandedState) << std::endl;
+  section("Flight Controller Landed State");
+  field("Available");
+  m_msgs << boolToString(uav_hasLandedState) << std::endl;
   if (uav_hasLandedState)
   {
-    m_msgs << "                State: " << UAV_Model::landedStateToString(uav_landedState) << std::endl;
-    m_msgs << "       Sample Age (s): " << doubleToStringX(m_uav_model.getLandedStateTelemetryAge(), sdigits) << std::endl;
+    field("State");
+    m_msgs << UAV_Model::landedStateToString(uav_landedState) << std::endl;
+    field("Sample Age");
+    m_msgs << doubleToStringX(m_uav_model.getLandedStateTelemetryAge(), sdigits)
+           << " s" << std::endl;
   }
 
-  m_msgs << std::endl;
-  m_msgs << "MAVLink Landing Target: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "            Received: " << boolToString(uav_hasLandingTarget) << std::endl;
-  m_msgs << "               Fresh: " << boolToString(uav_hasFreshLandingTarget) << std::endl;
+  section("MAVLink Landing Target");
+  field("Received");
+  m_msgs << boolToString(uav_hasLandingTarget) << std::endl;
+  field("Fresh");
+  m_msgs << boolToString(uav_hasFreshLandingTarget) << std::endl;
   if (uav_hasLandingTarget)
   {
-    m_msgs << "      Source Sys/Comp: "
-           << static_cast<unsigned int>(uav_landingTarget.source_system) << "/"
-           << static_cast<unsigned int>(uav_landingTarget.source_component) << std::endl;
-    m_msgs << "      Position Valid: " << boolToString(uav_landingTarget.position_valid) << std::endl;
-    m_msgs << "        Time (usec): " << uav_landingTarget.time_usec << std::endl;
-    m_msgs << "        Distance (m): " << doubleToStringX(uav_landingTarget.distance_m, sdigits) << std::endl;
-    m_msgs << "   Angular Size (rad): "
-           << doubleToStringX(uav_landingTarget.size_x_rad, sdigits) << "/"
-           << doubleToStringX(uav_landingTarget.size_y_rad, sdigits) << std::endl;
-    m_msgs << "          X/Y/Z (m): "
-           << doubleToStringX(uav_landingTarget.x_m, sdigits) << "/"
+    field("Source System/Component");
+    m_msgs << static_cast<unsigned int>(uav_landingTarget.source_system) << "/"
+           << static_cast<unsigned int>(uav_landingTarget.source_component)
+           << std::endl;
+    field("Position Valid");
+    m_msgs << boolToString(uav_landingTarget.position_valid) << std::endl;
+    field("Time");
+    m_msgs << uav_landingTarget.time_usec << " usec" << std::endl;
+    field("Distance");
+    m_msgs << doubleToStringX(uav_landingTarget.distance_m, sdigits) << " m"
+           << std::endl;
+    field("Angular Size");
+    m_msgs << doubleToStringX(uav_landingTarget.size_x_rad, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.size_y_rad, sdigits) << " rad"
+           << std::endl;
+    field("X/Y/Z");
+    m_msgs << doubleToStringX(uav_landingTarget.x_m, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.y_m, sdigits) << "/"
-           << doubleToStringX(uav_landingTarget.z_m, sdigits) << std::endl;
-    m_msgs << "        Q w/x/y/z: "
-           << doubleToStringX(uav_landingTarget.q_w, sdigits) << "/"
+           << doubleToStringX(uav_landingTarget.z_m, sdigits) << " m"
+           << std::endl;
+    field("Q w/x/y/z");
+    m_msgs << doubleToStringX(uav_landingTarget.q_w, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.q_x, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.q_y, sdigits) << "/"
            << doubleToStringX(uav_landingTarget.q_z, sdigits) << std::endl;
-    m_msgs << "       Sample Age (s): "
-           << doubleToStringX(m_uav_model.getLandingTargetTelemetryAge(), sdigits) << std::endl;
+    field("Sample Age");
+    m_msgs << doubleToStringX(m_uav_model.getLandingTargetTelemetryAge(),
+                              sdigits)
+           << " s" << std::endl;
   }
 
-  auto guidedHold = m_uav_model.isHoldCourseGuidedSet();
-  m_msgs << "    Helm On BUSY: " << boolToString(isHelmCommanding()) << std::endl;
-  m_msgs << "   Helm GUIDED HOLD: " << boolToString(guidedHold) << std::endl;
-  m_msgs << " Helm Setpoints Fresh: "
-         << boolToString(m_helm_desiredValues->setpointsFresh(m_helm_setpoint_timeout))
+  section("Helm Control");
+  const auto guidedHold = m_uav_model.isHoldCourseGuidedSet();
+  field("Helm Commanding");
+  m_msgs << boolToString(isHelmCommanding()) << std::endl;
+  field("Guided Hold");
+  m_msgs << boolToString(guidedHold) << std::endl;
+  field("Setpoints Fresh");
+  m_msgs << boolToString(
+                m_helm_desiredValues->setpointsFresh(m_helm_setpoint_timeout))
          << std::endl;
-  m_msgs << "Setpoint Timeout Latched: "
-         << boolToString(m_helm_setpoint_timeout_latched.load()) << std::endl;
-  // m_msgs << "do_loiter_pair.second: " << m_do_loiter_pair.second << std::endl;
-  m_msgs << std::endl;
+  field("Setpoint Timeout Latched");
+  m_msgs << boolToString(m_helm_setpoint_timeout_latched.load()) << std::endl;
 
-  m_msgs << "UAV Parameters: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "       Min AirSpeed: " << doubleToStringX(uav_minAirSpeed, sdigits) << " m/s" << std::endl;
-  m_msgs << "       Max AirSpeed: " << doubleToStringX(uav_maxAirSpeed, sdigits) << " m/s" << std::endl;
+  section("UAV Parameters");
+  field("Minimum Airspeed");
+  m_msgs << doubleToStringX(uav_minAirSpeed, sdigits) << " m/s" << std::endl;
+  field("Maximum Airspeed");
+  m_msgs << doubleToStringX(uav_maxAirSpeed, sdigits) << " m/s" << std::endl;
 
   double lat = m_uav_model.getLatitude();
   double lon = m_uav_model.getLongitude();
@@ -1700,23 +1787,22 @@ bool ArduBridge::buildReport()
 
   auto XY = transformLatLonToXY({lat, lon});
 
-  m_msgs << "State Information: " << std::endl;
-  m_msgs << "------------------ " << std::endl;
-  m_msgs << "       Helm Autonomy Mode: " << helmModeToString(m_autopilot_mode) << std::endl;
-  m_msgs << "  (Latitude , Longditute): " << lat << " , " << lon << std::endl;
-  m_msgs << "                  (X , Y): " << XY.x() << " , " << XY.y() << std::endl;
-  // m_msgs << "    Target Altitude (AGL): " << m_uav_model.getTargetAltitudeAGL() << " m" << "    Last Sent (AGL): " << m_uav_model.getLastSentTargetAltitudeAGL() << " m" << std::endl;
-  // m_msgs << "           Altitude (AGL): " << m_uav_model.getAltitudeAGL() << " m (Depth/Z: " << -m_uav_model.getAltitudeAGL() << " m)" << std::endl;
-  m_msgs << "           Altitude (MSL): " << doubleToStringX(uav_altitude_msl, sdigits) << " m" << std::endl;
-  // m_msgs << "          Target Airspeed: " << m_uav_model.getTargetAirSpeed() << " m/s" << std::endl;
-  // m_msgs << "          AirSpeed (SOG) : " << m_uav_model.getSOG() << " m/s)" << std::endl;
-  // m_msgs << "     Target Course (COG): " << doubleToStringX(uav_targetCOG, sdigits) << " deg" << std::endl;
-  m_msgs << "                  Heading: " << uav_heading << " deg" << std::endl;
+  section("State Information");
+  field("Helm Autonomy Mode");
+  m_msgs << helmModeToString(m_autopilot_mode) << std::endl;
+  field("Latitude, Longitude");
+  m_msgs << lat << ", " << lon << std::endl;
+  field("X, Y");
+  m_msgs << XY.x() << ", " << XY.y() << std::endl;
+  field("Altitude (MSL)");
+  m_msgs << doubleToStringX(uav_altitude_msl, sdigits) << " m" << std::endl;
+  field("Heading");
+  m_msgs << uav_heading << " deg" << std::endl;
 
-  m_msgs << "-------------------------------------------" << std::endl;
+  m_msgs << "--------------------------------------------" << std::endl;
 
   ACTable actb(4);
-  actb << "States | Measurments | Helm | Targets";
+  actb << "State | Measurement | Helm | Target";
   actb.addHeaderLines();
   actb << "Speed:" << doubleToStringX(uav_SOG, sdigits) << doubleToStringX(m_helm_desiredValues->readDesiredSpeed(), sdigits) << doubleToStringX(uav_targetAirspeed, sdigits);
   actb << "COG:" << doubleToStringX(uav_COG, sdigits) << doubleToStringX(m_helm_desiredValues->readDesiredCourse(), sdigits) << doubleToStringX(uav_targetCOG, sdigits);
@@ -1724,7 +1810,7 @@ bool ArduBridge::buildReport()
   ;
 
   m_msgs << actb.getFormattedString() << std::endl;
-  m_msgs << "-------------------------------------------" << std::endl;
+  m_msgs << "--------------------------------------------" << std::endl;
 
   ACTable actabd(3);
   actabd << "Waypoint | Lat | Lon";
@@ -1733,7 +1819,7 @@ bool ArduBridge::buildReport()
   actabd << "Next Wypt Coord:" << uav_next_waypoint_latlon.x() << uav_next_waypoint_latlon.y();
   actabd << "Course Wypt Coord:" << uav_course_waypoint_latlon.x() << uav_course_waypoint_latlon.y();
   m_msgs << actabd.getFormattedString() << std::endl;
-  m_msgs << "-------------------------------------------" << std::endl;
+  m_msgs << "--------------------------------------------" << std::endl;
 
   ACTable actab(2);
   actab << "Debug | Value ";
