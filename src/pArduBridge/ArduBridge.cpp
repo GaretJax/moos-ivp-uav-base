@@ -447,8 +447,19 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
         }
         else
         {
+          m_enter_guided_retained_recovery_mode.reset();
+          const double now = MOOSTime();
+          const auto mode = m_uav_model.getFlightMode();
+          // A completed recovery may leave the disarmed FC in LAND/RTL.
+          // Only this fresh, explicit request may leave that retained mode.
+          if (msg.IsString() && msg.GetTime() >= m_bridge_started &&
+              msg.GetTime() <= now + 1 && now - msg.GetTime() <= 2 &&
+              (mode == mavsdk::Telemetry::FlightMode::Land ||
+               mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch) &&
+              m_uav_model.hasFreshGroundedDisarmedTelemetry())
+            m_enter_guided_retained_recovery_mode = mode;
           m_enter_guided_pending = true;
-          m_enter_guided_started = MOOSTime();
+          m_enter_guided_started = now;
           m_last_enter_guided_attempt = -1.0;
           m_enter_guided_command_id = m_uav_model.reportCommandResult(
               "ENTER_GUIDED", "SUBMITTED",
@@ -482,7 +493,7 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       else if (command == "BRAKE_AND_HOLD")
       {
         const double now = MOOSTime();
-        if (!msg.IsString() || msg.GetTime() < m_yaw_bridge_started ||
+        if (!msg.IsString() || msg.GetTime() < m_bridge_started ||
             msg.GetTime() > now + 1 || now - msg.GetTime() > 2 ||
             m_passive || m_do_autoland || m_do_return_to_launch ||
             m_do_takeoff || m_enter_guided_pending || m_guided_handoff_waiting ||
@@ -661,12 +672,19 @@ bool ArduBridge::Iterate()
                                                      : rally.detail));
 
   // LAND/RTL may be selected directly at the FC, without a MOOS request.
-  // Never let an older readiness probe reclaim Guided from those modes.
+  // Never let an older readiness probe reclaim Guided from a new recovery.
+  // The exception is captured at admission, continuously native-ground-gated,
+  // and revoked permanently on a mode change or loss of ground/disarm proof.
   const auto guided_probe_mode = m_uav_model.getFlightMode();
+  if (m_enter_guided_retained_recovery_mode &&
+      (guided_probe_mode != *m_enter_guided_retained_recovery_mode ||
+       !m_uav_model.hasFreshGroundedDisarmedTelemetry()))
+    m_enter_guided_retained_recovery_mode.reset();
   if (m_enter_guided_pending &&
       (m_do_autoland || m_do_return_to_launch ||
-       guided_probe_mode == mavsdk::Telemetry::FlightMode::Land ||
-       guided_probe_mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch))
+       ((guided_probe_mode == mavsdk::Telemetry::FlightMode::Land ||
+         guided_probe_mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch) &&
+        !m_enter_guided_retained_recovery_mode)))
     cancelEnterGuided("FC_LAND_OR_RTL_PREEMPTED");
 
   // ENTER_GUIDED retries on MOOS time until telemetry confirms the mode or the
@@ -680,12 +698,14 @@ bool ArduBridge::Iterate()
                                       "GUIDED_MODE_CONFIRMED",
                                       m_enter_guided_command_id);
       m_enter_guided_pending = false;
+      m_enter_guided_retained_recovery_mode.reset();
     }
     else if (elapsed >= m_enter_guided_timeout)
     {
       m_uav_model.reportCommandResult("ENTER_GUIDED", "FAILED", "TIMEOUT",
                                       m_enter_guided_command_id);
       m_enter_guided_pending = false;
+      m_enter_guided_retained_recovery_mode.reset();
     }
     else if (m_last_enter_guided_attempt < 0.0 ||
              m_curr_time - m_last_enter_guided_attempt >= 1.0)
@@ -1199,7 +1219,7 @@ bool ArduBridge::Iterate()
 bool ArduBridge::OnStartUp()
 {
   AppCastingMOOSApp::OnStartUp();
-  m_yaw_bridge_started = MOOSTime();
+  m_bridge_started = MOOSTime();
 
   std::stringstream ss;
 
@@ -1665,6 +1685,11 @@ bool ArduBridge::buildReport()
   m_msgs << boolToString(uav_isInAir) << std::endl;
   field("Flight Mode");
   m_msgs << uav_flightMode << std::endl;
+  field("Guided Readiness Pending");
+  m_msgs << boolToString(m_enter_guided_pending) << std::endl;
+  field("Retained LAND/RTL Override");
+  m_msgs << boolToString(m_enter_guided_retained_recovery_mode.has_value())
+         << std::endl;
 
   section("Health Details");
   field("Gyro");
@@ -2089,6 +2114,7 @@ void ArduBridge::cancelEnterGuided(const std::string &detail)
   m_uav_model.reportCommandResult("ENTER_GUIDED", "CANCELED", detail,
                                   m_enter_guided_command_id);
   m_enter_guided_pending = false;
+  m_enter_guided_retained_recovery_mode.reset();
   m_last_enter_guided_attempt = -1.0;
 }
 
@@ -2102,7 +2128,7 @@ void ArduBridge::handleYawAlignmentRequest(const CMOOSMsg &msg)
       isNumber(heading) && isNumber(rate) && std::isfinite(atof(heading.c_str())) &&
       std::isfinite(atof(rate.c_str())) && atof(heading.c_str()) >= 0 && atof(heading.c_str()) < 360 &&
       atof(rate.c_str()) > 0 && atof(rate.c_str()) <= 90 &&
-      msg.GetTime() >= m_yaw_bridge_started && msg.GetTime() <= m_curr_time + 1 &&
+      msg.GetTime() >= m_bridge_started && msg.GetTime() <= m_curr_time + 1 &&
       m_curr_time - msg.GetTime() <= 2;
   // Only the already-established FC Guided position hold owns this request.
   // Never enter Guided, steal Helm authority, arm, or refresh an old request.

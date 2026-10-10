@@ -25,6 +25,8 @@ class AppcastLayoutTest(unittest.TestCase):
             self.assertIn(f'section("{section}")', report)
         self.assertIn('"State | Measurement | Helm | Target"', report)
         self.assertIn('"Bridge Helm Authority"', report)
+        self.assertIn('"Guided Readiness Pending"', report)
+        self.assertIn('"Retained LAND/RTL Override"', report)
         self.assertIn("not pHelmIvP PARK/DRIVE", report)
 
 

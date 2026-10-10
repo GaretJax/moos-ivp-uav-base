@@ -257,6 +257,7 @@ private: // State variables
   std::deque<UAV_Model::CommandResult> m_command_results;
   std::mutex m_command_results_mutex;
   std::string m_last_command_result;
+  double m_bridge_started = 0;
 
   GuidedOwnershipMonitor m_guided_ownership_monitor;
   double m_last_guided_hold_refresh_time;
@@ -280,6 +281,9 @@ private: // State variables
   std::optional<bool> m_arm_request;
   std::optional<double> m_sitl_speedup_request;
   bool m_enter_guided_pending;
+  // Initial LAND/RTL mode that this request may leave only while fresh native
+  // grounded/disarmed evidence remains available.
+  std::optional<mavsdk::Telemetry::FlightMode> m_enter_guided_retained_recovery_mode;
   double m_enter_guided_started;
   double m_enter_guided_timeout;
   double m_last_enter_guided_attempt;
@@ -305,7 +309,7 @@ private: // State variables
   std::future<bool> m_yaw_future;
   std::set<std::string> m_seen_yaw_requests;
   std::string m_yaw_request_id, m_last_yaw_result;
-  double m_yaw_goal = 0, m_yaw_bridge_started = 0;
+  double m_yaw_goal = 0;
 };
 
 #endif

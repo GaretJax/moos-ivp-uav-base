@@ -14,6 +14,7 @@ SOURCE = BASE / "src/pArduBridge/ArduBridge.cpp"
 PRELUDE = r"""
 #include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,7 @@ class ArduBridge {
 public:
   Model m_uav_model;
   bool m_enter_guided_pending = false;
+  std::optional<int> m_enter_guided_retained_recovery_mode;
   double m_last_enter_guided_attempt = 5;
   uint64_t m_enter_guided_command_id = 17;
   void cancelEnterGuided(const std::string &detail);
@@ -46,7 +48,9 @@ int main() {
   assert(bridge.m_last_enter_guided_attempt == 5);
 
   bridge.m_enter_guided_pending = true;
+  bridge.m_enter_guided_retained_recovery_mode = 9;
   bridge.cancelEnterGuided("SUPERSEDED_BY_RTL");
+  assert(!bridge.m_enter_guided_retained_recovery_mode);
   assert(!bridge.m_enter_guided_pending);
   assert(bridge.m_last_enter_guided_attempt == -1);
   assert(bridge.m_uav_model.results.size() == 1);

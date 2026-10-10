@@ -114,7 +114,7 @@ void showInterfaceAndExit()
   blk("------------------------------------                            ");
   blk("  ARDU_COMMAND = FLY_WAYPOINT | DO_TAKEOFF | RESET_SPEED_MIN   ");
   blk("                 RETURN_TO_LAUNCH | HOLD_POSITION | LOITER     ");
-  blk("                 BRAKE_AND_HOLD | LOITER_FC                    ");
+  blk("                 BRAKE_AND_HOLD | LOITER_FC | ENTER_GUIDED     ");
   blk("                 PRECISION_LOITER | PRECISION_LOITER_OFF        ");
   blk("                 AUTOLAND | SURVEY | DO_VORONOI | VIZ_HOME      ");
   blk("  ARM_UAV = true|false                                         ");
