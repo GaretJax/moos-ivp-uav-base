@@ -1964,6 +1964,8 @@ void ArduBridge::postHealthUpdate()
   if (m_uav_model.hasHealthTelemetry())
     Notify(m_uav_prefix + "_HEALTH_AGE", m_uav_model.getHealthTelemetryAge(), m_curr_time);
 
+  postBool(m_uav_prefix + "_GUIDED_MODE_ACTIVE", m_uav_model.isGuidedMode());
+
   const bool battery_available = m_uav_model.hasBatteryTelemetry();
   const bool battery_valid = m_uav_model.hasValidBatteryTelemetry();
   postBool(m_uav_prefix + "_BATTERY_DATA_VALID", battery_valid);

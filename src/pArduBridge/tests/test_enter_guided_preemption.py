@@ -108,6 +108,13 @@ class EnterGuidedPreemptionTest(unittest.TestCase):
         self.assertIn("Telemetry::FlightMode::ReturnToLaunch", iterate)
         self.assertIn('cancelEnterGuided("FC_LAND_OR_RTL_PREEMPTED")', iterate)
 
+    def test_confirmed_guided_mode_is_published_for_readiness_checks(self):
+        source = (BASE / "src/pArduBridge/ArduBridge.cpp").read_text()
+        self.assertIn(
+            'postBool(m_uav_prefix + "_GUIDED_MODE_ACTIVE", m_uav_model.isGuidedMode())',
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -149,6 +149,7 @@ void showInterfaceAndExit()
   blk("  UAV_IS_ARMABLE             // pre-arm status reported by MAVSDK                    ");
   blk("  UAV_HEALTH_ALL_OK          // MAVSDK aggregate health                               ");
   blk("  UAV_HEALTH_AGE             // Seconds since the last detailed health sample         ");
+  blk("  UAV_GUIDED_MODE_ACTIVE     // 1 when flight-mode telemetry confirms Guided           ");
   blk("  UAV_BATTERY_SOC            // Estimated remaining charge, percent                    ");
   blk("  UAV_BATTERY_VOLTAGE        // Primary battery voltage, V                             ");
   blk("  UAV_BATTERY_DATA_VALID     // 1 when remaining charge is finite and no more than 3 s old ");
