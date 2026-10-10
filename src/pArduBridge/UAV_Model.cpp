@@ -1208,6 +1208,7 @@ bool UAV_Model::commandAutoland() const
 
 bool UAV_Model::commandLoiterAtPos(XYPoint pos, bool holdCurrentAltitude)
 {
+  m_yaw_alignment_hold = false; // A new hold owns its own initial heading.
 
   if (!commandGuidedMode())
     return false;
@@ -1280,10 +1281,47 @@ std::string UAV_Model::getAttitudeSamples() const
   return wire.str();
 }
 
+bool UAV_Model::commandCopterYawAlignment(double true_heading_deg, double rate_deg_s)
+{
+  // No mode change, new waypoint or legacy altitude-derived IN_AIR shortcut.
+  const double landed_age = getLandedStateTelemetryAge();
+  if (!m_mavPass_ptr || !isCopter() || !isFlightControllerConnected() ||
+      !isGuidedMode() || !isArmed() || !hasLandedStateTelemetry() ||
+      getLandedState() != mavsdk::Telemetry::LandedState::InAir ||
+      !std::isfinite(landed_age) || landed_age < 0 || landed_age > LANDED_STATE_TELEMETRY_MAX_AGE_S ||
+      !std::isfinite(true_heading_deg) || true_heading_deg < 0 || true_heading_deg >= 360 ||
+      !std::isfinite(rate_deg_s) || rate_deg_s <= 0 || rate_deg_s > 90)
+    return false;
+  mavsdk::MavlinkPassthrough::CommandLong command{};
+  command.command = MAV_CMD_CONDITION_YAW;
+  command.target_sysid = m_system_ptr->get_system_id();
+  command.target_compid = MAV_COMP_ID_AUTOPILOT1;
+  command.param1 = true_heading_deg;
+  command.param2 = rate_deg_s;
+  command.param3 = 0; // shortest direction
+  command.param4 = 0; // absolute true-north heading
+  if (m_mavPass_ptr->send_command_long(command) != mavsdk::MavlinkPassthrough::Result::Success)
+    return false;
+  // Never reinstate a hold target after native mode/arming ownership changed.
+  if (!isGuidedMode() || !isArmed() || !isFlightControllerConnected())
+    return false;
+  // Preserve the accepted heading in the existing Guided hold refresh.
+  m_target_course = true_heading_deg;
+  m_yaw_alignment_hold = true;
+  return true;
+}
+
 bool UAV_Model::refreshCopterGuidedHold()
 {
   if (!isCopter() || !isGuidedMode())
     return false;
+
+  // Copter position-only Guided targets persist; only RATE/ANGLE_RATE yaw
+  // times out. A new position packet resets even ignored yaw to AutoYaw default
+  // (ModeGuided::set_yaw_state_rad), so retain FC-owned FIXED yaw and its rate
+  // by leaving the already-latched XYZ hold alone after CONDITION_YAW ACK.
+  if (m_yaw_alignment_hold.load())
+    return true;
 
   const auto current_position = mts_position.get();
   const double terrain_altitude_m =

@@ -126,7 +126,9 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       continue;
     
 
-    if (key == "DESIRED_HEADING") // DESIRED_COURSE comes in as DESIRED_HEADING from pHelm for legacy reasons
+    if (key == "YAW_ALIGN_REQUEST")
+      handleYawAlignmentRequest(msg);
+    else if (key == "DESIRED_HEADING") // DESIRED_COURSE comes in as DESIRED_HEADING from pHelm for legacy reasons
     {
       // The Helm plans in the local grid; ArduPilot expects true courses.
       double course = msg.GetDouble() -
@@ -820,7 +822,7 @@ bool ArduBridge::Iterate()
       flight_mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch;
 
   if (m_autopilot_mode == AutopilotHelmMode::HELM_INACTIVE_LOITERING &&
-      !m_do_loiter_pair.first && !fc_preempts_hold)
+      !m_do_loiter_pair.first && !fc_preempts_hold && !m_yaw_future.valid())
   {
     if (m_uav_model.isCopter() &&
         (m_last_guided_hold_refresh_time < 0 ||
@@ -971,6 +973,15 @@ bool ArduBridge::Iterate()
   postLandingTargetUpdate();
   m_uav_model.pollCommandConfirmations();
   postCommandResult();
+  if (m_yaw_future.valid() &&
+      m_yaw_future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+  {
+    const bool accepted = m_yaw_future.get();
+    m_last_yaw_result = "id=" + m_yaw_request_id + "#heading=" + doubleToStringX(m_yaw_goal, 6) +
+        "#status=" + (accepted ? "ACCEPTED" : "REJECTED") +
+        "#detail=" + (accepted ? "FC_ACK" : "FC_REJECTED_OR_STATE_CHANGED");
+    Notify(m_uav_prefix + "_YAW_ALIGN_RESULT", m_last_yaw_result, m_curr_time);
+  }
 
   updateControlAuthorityMonitoring();
   m_warning_system_ptr->checkConditions(); // Check for warnings and remove/raise them as needed
@@ -988,6 +999,7 @@ bool ArduBridge::Iterate()
 bool ArduBridge::OnStartUp()
 {
   AppCastingMOOSApp::OnStartUp();
+  m_yaw_bridge_started = MOOSTime();
 
   std::stringstream ss;
 
@@ -1284,6 +1296,7 @@ void ArduBridge::registerVariables()
     return;
 
   Register("FLY_WAYPOINT", 0);
+  Register("YAW_ALIGN_REQUEST", 0);
   Register("DO_TAKEOFF", 0);
   Register("RETURN_TO_LAUNCH", 0);
   Register("AUTOLAND", 0);
@@ -1712,6 +1725,38 @@ std::string ArduBridge::generateMissionPathSpec(const std::vector<XYPoint> &poin
   update_str += seglist.get_spec();
   return update_str;
 }
+
+void ArduBridge::handleYawAlignmentRequest(const CMOOSMsg &msg)
+{
+  const std::string id = tokStringParse(msg.GetString(), "id", '#', '=');
+  const std::string heading = tokStringParse(msg.GetString(), "heading", '#', '=');
+  const std::string rate = tokStringParse(msg.GetString(), "rate", '#', '=');
+  const bool valid = msg.IsString() && !id.empty() && id.size() <= 128 &&
+      id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") == std::string::npos &&
+      isNumber(heading) && isNumber(rate) && std::isfinite(atof(heading.c_str())) &&
+      std::isfinite(atof(rate.c_str())) && atof(heading.c_str()) >= 0 && atof(heading.c_str()) < 360 &&
+      atof(rate.c_str()) > 0 && atof(rate.c_str()) <= 90 &&
+      msg.GetTime() >= m_yaw_bridge_started && msg.GetTime() <= m_curr_time + 1 &&
+      m_curr_time - msg.GetTime() <= 2;
+  // Only the already-established FC Guided position hold owns this request.
+  // Never enter Guided, steal Helm authority, arm, or refresh an old request.
+  if (!valid || m_passive || m_yaw_future.valid() || m_seen_yaw_requests.count(id) ||
+      m_autopilot_mode != AutopilotHelmMode::HELM_INACTIVE_LOITERING ||
+      m_do_loiter_pair.first || m_do_autoland || m_do_return_to_launch || m_do_takeoff)
+  {
+    Notify(m_uav_prefix + "_YAW_ALIGN_RESULT", "id=" + id +
+        "#heading=" + heading + "#status=REJECTED#detail=INVALID_BUSY_OR_NOT_GUIDED_HOLD");
+    return;
+  }
+  m_seen_yaw_requests.insert(id);
+  m_yaw_request_id = id;
+  m_yaw_goal = atof(heading.c_str());
+  const double speed = atof(rate.c_str()), goal = m_yaw_goal;
+  m_yaw_future = std::async(std::launch::async, [this, goal, speed] {
+    return m_uav_model.commandCopterYawAlignment(goal, speed);
+  });
+}
+
 
 void ArduBridge::postTelemetryUpdate(const std::string &prefix)
 {

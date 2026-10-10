@@ -211,6 +211,7 @@ public:
   bool commandLoiterAtPos(XYPoint pos, bool holdCurrentAltitude = true);
   bool refreshCopterGuidedHold();
   bool commandPrecisionLoiter(bool enable, bool enterLoiterMode = true);
+  bool commandCopterYawAlignment(double true_heading_deg, double rate_deg_s);
   bool commandAndSetCourse(double heading, bool isAllowed = true); // command COG if in guided mode
 
   bool commandGuidedMode(bool alt_hold = false);
@@ -463,6 +464,7 @@ protected:
   // Exiting GUIDED returns aircraft to normal behaviour defined elsewhere
   // If hold heading is set, it will ignore further repositions command, and Guided mode has to be exited
   std::atomic<bool> m_is_hold_course_guided_set;
+  std::atomic<bool> m_yaw_alignment_hold{false};
 
   // Telemetry
   std::atomic<double> m_GPS_SOG_m_s;

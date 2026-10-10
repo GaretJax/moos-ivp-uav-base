@@ -165,6 +165,7 @@ void showInterfaceAndExit()
   blk("  UAV_ATTITUDE_SAMPLE_TIME   // Original native receipt time, MOOS seconds (not repost time) ");
   blk("  UAV_ATTITUDE_TIME_USEC     // Original FC attitude boot timestamp, microseconds ");
   blk("  UAV_ATTITUDE_SAMPLES       // Atomic boot_usec,roll,pitch,yaw,receipt_moos;... native window ");
+  blk("  UAV_YAW_ALIGN_RESULT       // id#heading#status#detail; ACCEPTED means FC ACK, not aligned ");
   blk("  UAV_GPS_AVAILABLE          // 1 after GPS telemetry is received; fix may be invalid ");
   blk("  UAV_GPS_FIX_TYPE           // 0=No GPS,1=No Fix,2=2D,3=3D,...6=RTK fixed          ");
   blk("  UAV_GPS_SATELLITES         // Satellites used/visible                               ");

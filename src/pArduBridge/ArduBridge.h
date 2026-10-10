@@ -26,6 +26,7 @@
 #include <atomic>
 #include <deque>
 #include <mutex>
+#include <set>
 
 class ArduBridge : public AppCastingMOOSApp
 {
@@ -139,6 +140,7 @@ private: // Autopilot Helm states
   std::map<StateTransition, std::function<void()>> m_statetransition_functions;
   void initializeStateTransitionFunctions();
   void updateControlAuthorityMonitoring();
+  void handleYawAlignmentRequest(const CMOOSMsg &msg);
 
 private:
   const double MARKER_WIDTH = 10.0;
@@ -281,6 +283,12 @@ private: // State variables
   // Helm utility
   XYPoint m_tonext_waypointXY;
   std::vector<XYPoint> m_waypointsXY_mission;
+
+  // Declared after the model: async command joins before model destruction.
+  std::future<bool> m_yaw_future;
+  std::set<std::string> m_seen_yaw_requests;
+  std::string m_yaw_request_id, m_last_yaw_result;
+  double m_yaw_goal = 0, m_yaw_bridge_started = 0;
 };
 
 #endif
