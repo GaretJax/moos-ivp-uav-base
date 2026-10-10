@@ -343,6 +343,24 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
         m_do_return_to_launch = true;
       }
     }
+    else if (key == "SITL_SPEEDUP")
+    {
+      const double speedup = msg.IsDouble() ? msg.GetDouble() : NAN;
+      if (!m_is_simulation)
+      {
+        m_uav_model.reportCommandResult("SITL_SPEEDUP", "REJECTED",
+                                        "SIMULATION_ONLY");
+      }
+      else if (!std::isfinite(speedup) || speedup < 1.0 || speedup > 100.0)
+      {
+        m_uav_model.reportCommandResult("SITL_SPEEDUP", "REJECTED",
+                                        "REQUIRE_1_TO_100");
+      }
+      else
+      {
+        m_sitl_speedup_request = speedup;
+      }
+    }
     else if (key == "DEAD_MAN_POST_INTERRUPT")
     {
       cancelEnterGuided("SUPERSEDED_BY_DEADMAN");
@@ -588,6 +606,19 @@ bool ArduBridge::Iterate()
   /////   - change altitude     (needs to be done immidiately)
   /////   - reset speed to min  (needs to be done immidiately)
   //////////////////////////////////////////////////////////////
+
+  if (m_sitl_speedup_request)
+  {
+    const double speedup = *m_sitl_speedup_request;
+    const bool accepted = m_uav_model.setFloatParameter(
+        "SIM_SPEEDUP", static_cast<float>(speedup));
+    m_uav_model.reportCommandResult(
+        "SITL_SPEEDUP", accepted ? "ACCEPTED" : "FAILED",
+        accepted ? "PARAMETER_SET" : "PARAMETER_SET_FAILED");
+    if (accepted)
+      Notify(m_uav_prefix + "_SITL_SPEEDUP", speedup, m_curr_time);
+    m_sitl_speedup_request.reset();
+  }
 
   pollBrakeAndHold();
 
@@ -1436,6 +1467,7 @@ void ArduBridge::registerVariables()
     return;
 
   Register("FLY_WAYPOINT", 0);
+  Register("SITL_SPEEDUP", 0);
   Register("YAW_ALIGN_REQUEST", 0);
   Register("DO_TAKEOFF", 0);
   Register("RETURN_TO_LAUNCH", 0);

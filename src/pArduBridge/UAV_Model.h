@@ -241,6 +241,7 @@ public:
 
   bool commandGuidedMode(bool alt_hold = false);
   bool commandEnterGuided();
+  bool setFloatParameter(const std::string &name, float value) const;
 
   // Setters
   void setCallbackMOOSTrace(const std::function<void(const std::string &)> &callback) { callbackMOOSTrace = callback; }

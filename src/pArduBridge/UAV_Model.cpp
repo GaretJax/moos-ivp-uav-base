@@ -1050,6 +1050,12 @@ bool UAV_Model::commandEnterGuided()
          mavsdk::Action::Result::Success;
 }
 
+bool UAV_Model::setFloatParameter(const std::string &name, float value) const
+{
+  return m_param_ptr && m_param_ptr->set_param_float(name, value) ==
+                            mavsdk::Param::Result::Success;
+}
+
 bool UAV_Model::commandGuidedMode(bool alt_hold)
 {
 

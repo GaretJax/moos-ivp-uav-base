@@ -121,6 +121,7 @@ void showInterfaceAndExit()
   blk("  NEXT_WAYPOINT = lat=...,lon=...,x=...,y=...,vname=...        ");
   blk("  HELM_STATUS, AUTOPILOT_MODE, MOOS_MANUAL_OVERRIDE            ");
   blk("  CHANGE_SPEED, CHANGE_COURSE, CHANGE_ALTITUDE, DEAD_MAN_POST_INTERRUPT ");
+  blk("  SITL_SPEEDUP = 1..100        // Simulation-only SIM_SPEEDUP parameter   ");
   blk("  Compatibility registrations: FLY_WAYPOINT, DO_TAKEOFF, LOITER, ");
   blk("    SURVEY, RESET_SPEED_MIN, VIZ_HOME (use ARDU_COMMAND path)   ");
   blk("                                                                ");
@@ -150,6 +151,7 @@ void showInterfaceAndExit()
   blk("  UAV_HEALTH_ALL_OK          // MAVSDK aggregate health                               ");
   blk("  UAV_HEALTH_AGE             // Seconds since the last detailed health sample         ");
   blk("  UAV_GUIDED_MODE_ACTIVE     // 1 when flight-mode telemetry confirms Guided           ");
+  blk("  UAV_SITL_SPEEDUP           // Last successfully commanded SITL speed multiplier       ");
   blk("  UAV_BATTERY_SOC            // Estimated remaining charge, percent                    ");
   blk("  UAV_BATTERY_VOLTAGE        // Primary battery voltage, V                             ");
   blk("  UAV_BATTERY_DATA_VALID     // 1 when remaining charge is finite and no more than 3 s old ");

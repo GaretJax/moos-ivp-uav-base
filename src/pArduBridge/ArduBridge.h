@@ -274,6 +274,7 @@ private: // State variables
   bool m_force_native_rtl;
   bool m_do_autoland;
   std::optional<bool> m_arm_request;
+  std::optional<double> m_sitl_speedup_request;
   bool m_enter_guided_pending;
   double m_enter_guided_started;
   double m_enter_guided_timeout;
