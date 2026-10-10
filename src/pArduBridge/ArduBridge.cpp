@@ -25,7 +25,9 @@
 // Constructor()
 
 ArduBridge::ArduBridge()
-    : m_do_fly_to_waypoint{false},
+    : m_do_fly_to_waypoint{false}, m_enter_guided_pending{false},
+      m_enter_guided_started{0.0}, m_enter_guided_timeout{30.0},
+      m_last_enter_guided_attempt{-1.0}, m_enter_guided_command_id{0},
       m_do_takeoff{false},
       m_cli_arg{},
       m_do_change_speed_pair{std::make_pair(false, 0)},
@@ -180,6 +182,9 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
         continue;
       }
 
+      if (!helm_status_on)
+        cancelEnterGuided("SUPERSEDED_BY_HELM_STATUS_OFF");
+
       if (!helm_status_on && m_autopilot_mode != AutopilotHelmMode::HELM_INACTIVE_LOITERING)
       {
         // m_autopilot_mode = AutopilotHelmState::HELM_INACTIVE;
@@ -200,6 +205,7 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       Logger::info("OnNewMail MOOS_MANUAL_OVERRIDE: " + msg.GetString() + " from " + msg.GetSource());
       if (msg.GetString() == "true")
       {
+        cancelEnterGuided("SUPERSEDED_BY_MANUAL_OVERRIDE");
         // A self-post only mirrors Helm parking. An external park request
         // retains legacy RTL unless native telemetry proves the aircraft is
         // already grounded and disarmed. Never infer this from altitude/FSM.
@@ -220,23 +226,27 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
     else if (key == "AUTOPILOT_MODE")
     {
       Logger::info("OnNewMail AUTOPILOT_MODE: " + msg.GetString() + " from " + msg.GetSource());
+      cancelEnterGuided("SUPERSEDED_BY_AUTOPILOT_MODE");
       goToHelmMode(stringToHelmMode(msg.GetString()), true);
     }
     else if (key == "CHANGE_SPEED")
     {
       Logger::info("OnNewMail CHANGE_SPEED: " + msg.GetString() + " from " + msg.GetSource());
+      cancelEnterGuided("SUPERSEDED_BY_CHANGE_SPEED");
       double speed_change = msg.GetDouble();
       m_do_change_speed_pair = std::make_pair(true, speed_change);
     }
     else if (key == "CHANGE_COURSE")
     {
       Logger::info("OnNewMail CHANGE_COURSE: " + msg.GetString() + " from " + msg.GetSource());
+      cancelEnterGuided("SUPERSEDED_BY_CHANGE_COURSE");
       double course_change = msg.GetDouble();
       m_do_change_course_pair = std::make_pair(true, course_change);
     }
     else if (key == "CHANGE_ALTITUDE")
     {
       Logger::info("OnNewMail CHANGE_ALTITUDE: " + msg.GetString() + " from " + msg.GetSource());
+      cancelEnterGuided("SUPERSEDED_BY_CHANGE_ALTITUDE");
       double altitude_change = msg.GetDouble();
       m_do_change_altitude_pair = std::make_pair(true, altitude_change);
 
@@ -248,6 +258,7 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       bool arm_requested;
       if (setBooleanOnString(arm_requested, msg.GetString()))
       {
+        cancelEnterGuided("SUPERSEDED_BY_ARM_REQUEST");
         m_arm_request = arm_requested;
       }
       else
@@ -276,6 +287,7 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       }
       else if (land_requested)
       {
+        cancelEnterGuided("SUPERSEDED_BY_AUTOLAND");
         m_do_autoland = true;
       }
     }
@@ -300,12 +312,14 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       }
       else if (rtl_requested)
       {
+        cancelEnterGuided("SUPERSEDED_BY_RTL");
         m_force_native_rtl = false;
         m_do_return_to_launch = true;
       }
     }
     else if (key == "DEAD_MAN_POST_INTERRUPT")
     {
+      cancelEnterGuided("SUPERSEDED_BY_DEADMAN");
       if (m_do_autoland ||
           m_uav_model.getFlightMode() == mavsdk::Telemetry::FlightMode::Land)
       {
@@ -327,6 +341,15 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       std::string command = msg.GetString();
       Logger::info("OnNewMail ARDU_COMMAND: " + command + " from " + msg.GetSource());
 
+      static const std::set<std::string> preempting_commands = {
+          "FLY_WAYPOINT", "DO_TAKEOFF", "RETURN_TO_LAUNCH", "RETURN",
+          "LOITER", "HOLD_POSITION", "LOITER_FC", "PRECISION_LOITER",
+          "PRECISION_LOITER_ON", "PRECISION_LOITER_ENABLE",
+          "PRECISION_LOITER_OFF", "PRECISION_LOITER_DISABLE", "SURVEY",
+          "DO_VORONOI", "AUTOLAND"};
+      if (preempting_commands.count(command))
+        cancelEnterGuided("SUPERSEDED_BY_" + command);
+
       bool handled = false;
       if (command == "VIZ_HOME")
       {
@@ -340,6 +363,30 @@ bool ArduBridge::OnNewMail(MOOSMSG_LIST &NewMail)
       {
         m_do_fly_to_waypoint = true;
         handled = true;
+      }
+      else if (command == "ENTER_GUIDED")
+      {
+        handled = true;
+        if (m_enter_guided_pending)
+        {
+          m_uav_model.reportCommandResult("ENTER_GUIDED", "REJECTED",
+                                          "COMMAND_IN_PROGRESS");
+        }
+        else if (m_uav_model.isGuidedMode())
+        {
+          m_uav_model.reportCommandResult("ENTER_GUIDED", "ACCEPTED",
+                                          "GUIDED_MODE_CONFIRMED");
+        }
+        else
+        {
+          m_enter_guided_pending = true;
+          m_enter_guided_started = MOOSTime();
+          m_last_enter_guided_attempt = -1.0;
+          m_enter_guided_command_id = m_uav_model.reportCommandResult(
+              "ENTER_GUIDED", "SUBMITTED",
+              "RETRY_UNTIL_TIMEOUT=" +
+                  doubleToString(m_enter_guided_timeout));
+        }
       }
       else if (command == "DO_TAKEOFF")
       {
@@ -499,6 +546,41 @@ bool ArduBridge::Iterate()
   /////   - change altitude     (needs to be done immidiately)
   /////   - reset speed to min  (needs to be done immidiately)
   //////////////////////////////////////////////////////////////
+
+  // LAND/RTL may be selected directly at the FC, without a MOOS request.
+  // Never let an older readiness probe reclaim Guided from those modes.
+  const auto guided_probe_mode = m_uav_model.getFlightMode();
+  if (m_enter_guided_pending &&
+      (m_do_autoland || m_do_return_to_launch ||
+       guided_probe_mode == mavsdk::Telemetry::FlightMode::Land ||
+       guided_probe_mode == mavsdk::Telemetry::FlightMode::ReturnToLaunch))
+    cancelEnterGuided("FC_LAND_OR_RTL_PREEMPTED");
+
+  // ENTER_GUIDED retries on MOOS time until telemetry confirms the mode or the
+  // configured timeout expires.
+  if (m_enter_guided_pending)
+  {
+    const double elapsed = m_curr_time - m_enter_guided_started;
+    if (m_uav_model.isGuidedMode())
+    {
+      m_uav_model.reportCommandResult("ENTER_GUIDED", "ACCEPTED",
+                                      "GUIDED_MODE_CONFIRMED",
+                                      m_enter_guided_command_id);
+      m_enter_guided_pending = false;
+    }
+    else if (elapsed >= m_enter_guided_timeout)
+    {
+      m_uav_model.reportCommandResult("ENTER_GUIDED", "FAILED", "TIMEOUT",
+                                      m_enter_guided_command_id);
+      m_enter_guided_pending = false;
+    }
+    else if (m_last_enter_guided_attempt < 0.0 ||
+             m_curr_time - m_last_enter_guided_attempt >= 1.0)
+    {
+      m_uav_model.commandEnterGuided();
+      m_last_enter_guided_attempt = m_curr_time;
+    }
+  }
 
   /// Takeoff
   if (m_do_takeoff)
@@ -1095,6 +1177,16 @@ bool ArduBridge::OnStartUp()
       else
         reportConfigWarning("helm_setpoint_timeout must be greater than zero");
     }
+    else if (param == "guided_mode_timeout")
+    {
+      double timeout = 0;
+      handled = setDoubleOnString(timeout, value) && std::isfinite(timeout) &&
+                timeout > 0;
+      if (handled)
+        m_enter_guided_timeout = timeout;
+      else
+        reportConfigWarning("guided_mode_timeout must be greater than zero");
+    }
     else if (param == "telemetry_position_hz")
     {
       handled = true;
@@ -1357,6 +1449,7 @@ bool ArduBridge::buildReport()
   m_msgs << "Telemetry Velocity Rate: " << telemetry_rates.velocity_hz << " Hz" << std::endl;
   m_msgs << "Precision Loiter Enters Loiter: " << boolToString(m_precision_loiter_enter_loiter) << std::endl;
   m_msgs << "Helm Setpoint Timeout: " << m_helm_setpoint_timeout << " s" << std::endl;
+  m_msgs << "Guided Mode Timeout: " << m_enter_guided_timeout << " s" << std::endl;
   std::string sim_mode = m_is_simulation ? "SITL" : "No Simulation";
   m_msgs << "Simulation Mode: " << sim_mode << std::endl;
   m_msgs << "Control Authority: " << controlAuthorityToString(m_autopilot_mode) << std::endl;
@@ -1733,6 +1826,16 @@ std::string ArduBridge::generateMissionPathSpec(const std::vector<XYPoint> &poin
   std::string update_str = "points = ";
   update_str += seglist.get_spec();
   return update_str;
+}
+
+void ArduBridge::cancelEnterGuided(const std::string &detail)
+{
+  if (!m_enter_guided_pending)
+    return;
+  m_uav_model.reportCommandResult("ENTER_GUIDED", "CANCELED", detail,
+                                  m_enter_guided_command_id);
+  m_enter_guided_pending = false;
+  m_last_enter_guided_attempt = -1.0;
 }
 
 void ArduBridge::handleYawAlignmentRequest(const CMOOSMsg &msg)

@@ -998,6 +998,17 @@ bool UAV_Model::haveAutorythyToChangeMode() const
 /////////////  COMMANDS  //////////
 ///////////////////////////////////
 
+bool UAV_Model::commandEnterGuided()
+{
+  if (!isCopter())
+    return false;
+  if (isGuidedMode())
+    return true;
+
+  return m_action_ptr->set_flight_mode_guided() ==
+         mavsdk::Action::Result::Success;
+}
+
 bool UAV_Model::commandGuidedMode(bool alt_hold)
 {
 

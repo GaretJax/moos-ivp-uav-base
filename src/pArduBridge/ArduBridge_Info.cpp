@@ -80,6 +80,7 @@ void showExampleConfigAndExit()
   blk("  telemetry_attitude_hz = 5      // override per mission if needed");
   blk("  telemetry_velocity_hz = 5      // must be greater than zero     ");
   blk("  helm_setpoint_timeout = 2      // Copter stale-setpoint hold (s)");
+  blk("  guided_mode_timeout = 30       // ENTER_GUIDED retry timeout (MOOS s)");
   blk("  precision_loiter_enter_loiter = true // false requires FC Loiter already ");
   blk("  command_groundspeed = true     // forced true for Copter       ");
   blk("  is_sim = false                 // Plane SITL mission setup only");

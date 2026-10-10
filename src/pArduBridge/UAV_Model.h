@@ -215,6 +215,7 @@ public:
   bool commandAndSetCourse(double heading, bool isAllowed = true); // command COG if in guided mode
 
   bool commandGuidedMode(bool alt_hold = false);
+  bool commandEnterGuided();
 
   // Setters
   void setCallbackMOOSTrace(const std::function<void(const std::string &)> &callback) { callbackMOOSTrace = callback; }

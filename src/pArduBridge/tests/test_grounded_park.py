@@ -71,6 +71,7 @@ public:
   unsigned parks = 0, events = 0;
   std::string GetAppName() const { return "pArduBridge"; }
   void reportEvent(const std::string&) { ++events; }
+  void cancelEnterGuided(const std::string&) {}
   void goToHelmMode(AutopilotHelmMode, bool) { ++parks; }
   void handle(Message msg);
 };
