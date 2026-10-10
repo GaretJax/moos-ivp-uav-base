@@ -1740,7 +1740,12 @@ void ArduBridge::postTelemetryUpdate(const std::string &prefix)
   auto uav_isHoldCourseGuided = m_uav_model.isHoldCourseGuidedSet();
 
   auto uav_SOG = m_uav_model.getSOG();
-  // auto uav_heading = m_uav_model.getHeading();
+  const auto attitude = m_uav_model.getAttitudeTelemetry();
+  const double attitude_age = m_uav_model.getAttitudeTelemetryAge(attitude);
+  const bool attitude_available = attitude.received_s >= 0 &&
+      std::isfinite(attitude.euler.roll_deg) && std::isfinite(attitude.euler.pitch_deg) &&
+      std::isfinite(attitude.euler.yaw_deg);
+  auto uav_heading = angle360(attitude.euler.yaw_deg);
   auto uav_COG = m_uav_model.getCOG();
   auto uav_altitude_agl = m_uav_model.getAltitudeAGL();
 
@@ -1755,14 +1760,21 @@ void ArduBridge::postTelemetryUpdate(const std::string &prefix)
 
   NotifyIfNonNan(prefix + "_ALTITUDE", uav_altitude_agl, m_curr_time);
   NotifyIfNonNan(prefix + "_ALTITUDE_MSL", m_uav_model.getAltitudeMSL(), m_curr_time);
-  NotifyIfNonNan(prefix + "_YAW", m_uav_model.getHeading(), m_curr_time);
+  NotifyIfNonNan(prefix + "_YAW", uav_heading, m_curr_time);
+  NotifyIfNonNan(prefix + "_ROLL", attitude.euler.roll_deg, m_curr_time);
+  NotifyIfNonNan(prefix + "_PITCH", attitude.euler.pitch_deg, m_curr_time);
+  Notify(prefix + "_ATTITUDE_AVAILABLE", attitude_available ? 1.0 : 0.0, m_curr_time);
+  Notify(prefix + "_ATTITUDE_AGE", attitude_age, m_curr_time);
+  Notify(prefix + "_ATTITUDE_SAMPLE_TIME", attitude.received_moos_time, m_curr_time);
+  Notify(prefix + "_ATTITUDE_TIME_USEC", static_cast<double>(attitude.euler.timestamp_us), m_curr_time);
+  Notify(prefix + "_ATTITUDE_SAMPLES", m_uav_model.getAttitudeSamples(), m_curr_time);
   NotifyIfNonNan(prefix + "_DEPTH", -uav_altitude_agl, m_curr_time);
 
-  // NAV_COURSE comes in as NAV_HEADING for pNodeReporter. Report it in the
-  // same local grid as _X/_Y; _YAW stays a true heading.
-  NotifyIfNonNan(prefix + "_HEADING",
-                 angle360(uav_COG + gridBearingOfTrueNorth(lat, lon)),
-                 m_curr_time);
+  // Body heading and course over ground are distinct, especially in hover.
+  // Both bearings use the same local grid as _X/_Y; _YAW stays true-north.
+  const double grid_north = gridBearingOfTrueNorth(lat, lon);
+  NotifyIfNonNan(prefix + "_HEADING", angle360(uav_heading + grid_north), m_curr_time);
+  NotifyIfNonNan(prefix + "_COG", angle360(uav_COG + grid_north), m_curr_time);
 }
 
 //---------------------------------------------------------

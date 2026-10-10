@@ -11,6 +11,7 @@
 #include "MBUtils.h"
 #include "AngleUtils.h"
 #include "MOOSGeodesy.h"
+#include "MOOS/libMOOS/Utils/MOOSUtilityFunctions.h"
 
 #include "thread"
 
@@ -18,6 +19,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include "Logger.h"
 //------------------------------------------------------------------------
 // Constructor
@@ -643,7 +646,27 @@ bool UAV_Model::subscribeToTelemetry(bool request_message_rates)
                                           });
 
   m_telemetry_ptr->subscribe_attitude_euler([&](mavsdk::Telemetry::EulerAngle attitude_ned)
-                                            { mts_attitude_ned = attitude_ned; });
+  {
+    mts_attitude_ned = attitude_ned;
+    const double now = std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    const AttitudeTelemetry sample{attitude_ned, now, MOOSTime()};
+    mts_attitude_snapshot.set(sample);
+    if (attitude_ned.timestamp_us && std::isfinite(attitude_ned.roll_deg) &&
+        std::isfinite(attitude_ned.pitch_deg) && std::isfinite(attitude_ned.yaw_deg)) {
+      std::lock_guard<std::mutex> lock(m_attitude_samples_mutex);
+      if (!m_attitude_samples.empty() &&
+          attitude_ned.timestamp_us < m_attitude_samples.back().euler.timestamp_us)
+        m_attitude_samples.clear();
+      if (m_attitude_samples.empty() ||
+          attitude_ned.timestamp_us != m_attitude_samples.back().euler.timestamp_us)
+        m_attitude_samples.push_back(sample);
+      while (m_attitude_samples.size() > 128 ||
+             (!m_attitude_samples.empty() && now - m_attitude_samples.front().received_s > 1.0))
+        m_attitude_samples.pop_front();
+    }
+  });
+
 
   m_telemetry_ptr->subscribe_velocity_ned([&](mavsdk::Telemetry::VelocityNed vel)
                                           { mts_velocity_ned = vel; });
@@ -1227,6 +1250,34 @@ bool UAV_Model::commandLoiterAtPos(XYPoint pos, bool holdCurrentAltitude)
 
   m_warning_system_ptr->queue_monitorWarningForXseconds("Loitering failed", WARNING_DURATION);
   return false;
+}
+
+double UAV_Model::getAttitudeTelemetryAge(const AttitudeTelemetry &sample) const
+{
+  if (sample.received_s < 0)
+    return -1;
+  return std::max(0.0, std::chrono::duration<double>(
+      std::chrono::steady_clock::now().time_since_epoch()).count() - sample.received_s);
+}
+
+std::string UAV_Model::getAttitudeSamples() const
+{
+  std::lock_guard<std::mutex> lock(m_attitude_samples_mutex);
+  std::ostringstream wire;
+  wire << std::setprecision(17);
+  bool first = true;
+  for (const auto &sample : m_attitude_samples) {
+    const double age = getAttitudeTelemetryAge(sample);
+    if (!std::isfinite(age) || age < 0 || age > 1.0)
+      continue;
+    if (!first)
+      wire << ';';
+    first = false;
+    wire << sample.euler.timestamp_us << ',' << sample.euler.roll_deg << ','
+         << sample.euler.pitch_deg << ',' << sample.euler.yaw_deg << ','
+         << sample.received_moos_time;
+  }
+  return wire.str();
 }
 
 bool UAV_Model::refreshCopterGuidedHold()

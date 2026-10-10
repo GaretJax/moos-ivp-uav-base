@@ -132,7 +132,10 @@ void showInterfaceAndExit()
   blk("PUBLICATIONS:                                                   ");
   blk("------------------------------------                            ");
   blk("  <PREFIX>_LAT, <PREFIX>_LON, <PREFIX>_X, <PREFIX>_Y           ");
-  blk("  <PREFIX>_HEADING, <PREFIX>_SPEED                             ");
+  blk("  <PREFIX>_YAW       // FC attitude yaw, degrees clockwise from true north ");
+  blk("  <PREFIX>_HEADING   // FC attitude yaw converted to local-grid bearing, degrees ");
+  blk("  <PREFIX>_COG       // FC GPS course over ground converted to local grid, degrees ");
+  blk("  <PREFIX>_SPEED     // FC GPS ground speed, m/s                  ");
   blk("  <PREFIX>_ALTITUDE, <PREFIX>_DEPTH                            ");
   blk("  UAV_HEALTH_AVAILABLE       // 1 after MAVSDK health telemetry is received          ");
   blk("  UAV_IS_ARMED               // Current armed state reported by the flight controller ");
@@ -156,6 +159,12 @@ void showInterfaceAndExit()
   blk("  UAV_LAND_POLICY_READY      // 1 when mode policy permits a new LAND submission       ");
   blk("  UAV_LAND_POLICY_REASON     // Stable reason token; all unlisted modes are denied      ");
   blk("  UAV_COMMAND_RESULT         // Every ARDU_COMMAND reports an outcome; takeoff adds COMPLETED ");
+  blk("  UAV_ROLL, UAV_PITCH         // Native snapshot degrees, right bank / nose up positive ");
+  blk("  UAV_ATTITUDE_AVAILABLE     // 1 after a finite native Euler sample; check AGE too ");
+  blk("  UAV_ATTITUDE_AGE           // Native receipt age, real seconds; -1 if unavailable ");
+  blk("  UAV_ATTITUDE_SAMPLE_TIME   // Original native receipt time, MOOS seconds (not repost time) ");
+  blk("  UAV_ATTITUDE_TIME_USEC     // Original FC attitude boot timestamp, microseconds ");
+  blk("  UAV_ATTITUDE_SAMPLES       // Atomic boot_usec,roll,pitch,yaw,receipt_moos;... native window ");
   blk("  UAV_GPS_AVAILABLE          // 1 after GPS telemetry is received; fix may be invalid ");
   blk("  UAV_GPS_FIX_TYPE           // 0=No GPS,1=No Fix,2=2D,3=3D,...6=RTK fixed          ");
   blk("  UAV_GPS_SATELLITES         // Satellites used/visible                               ");

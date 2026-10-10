@@ -41,6 +41,7 @@
 #include "ThreadSafeVariable.h"
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -298,6 +299,15 @@ public:
   double getTargetAirSpeed() const { return (m_target_airspeed); }
   double getAirSpeed() const { return (sqrt(mts_velocity_ned.get().north_m_s * mts_velocity_ned.get().north_m_s + mts_velocity_ned.get().east_m_s * mts_velocity_ned.get().east_m_s) + mts_velocity_ned.get().down_m_s * mts_velocity_ned.get().down_m_s); }
   double getSOG() const { return (m_GPS_SOG_m_s); }
+  struct AttitudeTelemetry
+  {
+    mavsdk::Telemetry::EulerAngle euler{};
+    double received_s = -1;
+    double received_moos_time = -1;
+  };
+  AttitudeTelemetry getAttitudeTelemetry() const { return mts_attitude_snapshot.get(); }
+  std::string getAttitudeSamples() const;
+  double getAttitudeTelemetryAge(const AttitudeTelemetry &sample) const;
   double getHeading() const { return (angle360(mts_attitude_ned.get().yaw_deg)); }
   double getCOG() const { return (angle360(m_GPS_COG_deg)); }
 
@@ -465,6 +475,9 @@ protected:
   std::atomic<double> m_last_landing_target_update_s;
   ThreadSafeVariable<mavsdk::Telemetry::Position> mts_position;
   ThreadSafeVariable<mavsdk::Telemetry::EulerAngle> mts_attitude_ned;
+  ThreadSafeVariable<AttitudeTelemetry> mts_attitude_snapshot{AttitudeTelemetry()};
+  mutable std::mutex m_attitude_samples_mutex;
+  std::deque<AttitudeTelemetry> m_attitude_samples;
   ThreadSafeVariable<mavsdk::Telemetry::VelocityNed> mts_velocity_ned;
 
   ThreadSafeVariable<mavsdk::Telemetry::Battery> mts_battery;
