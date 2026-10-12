@@ -1514,32 +1514,33 @@ std::string UAV_Model::getAttitudeSamples() const
   return wire.str();
 }
 
-bool UAV_Model::commandCopterYawAlignment(double true_heading_deg, double rate_deg_s)
+bool UAV_Model::commandCopterYawAlignment(double relative_angle_deg, double rate_deg_s)
 {
   // No mode change, new waypoint or legacy altitude-derived IN_AIR shortcut.
+  // The target observer reports orientation in BODY_FRD, so retain that exact
+  // relative contract instead of manufacturing an exposure-time NED heading.
   const double landed_age = getLandedStateTelemetryAge();
   if (!m_mavPass_ptr || !isCopter() || !isFlightControllerConnected() ||
       !isGuidedMode() || !isArmed() || !hasLandedStateTelemetry() ||
       getLandedState() != mavsdk::Telemetry::LandedState::InAir ||
       !std::isfinite(landed_age) || landed_age < 0 || landed_age > LANDED_STATE_TELEMETRY_MAX_AGE_S ||
-      !std::isfinite(true_heading_deg) || true_heading_deg < 0 || true_heading_deg >= 360 ||
+      !std::isfinite(relative_angle_deg) || relative_angle_deg < -180 || relative_angle_deg > 180 ||
       !std::isfinite(rate_deg_s) || rate_deg_s <= 0 || rate_deg_s > 90)
     return false;
   mavsdk::MavlinkPassthrough::CommandLong command{};
   command.command = MAV_CMD_CONDITION_YAW;
   command.target_sysid = m_system_ptr->get_system_id();
   command.target_compid = MAV_COMP_ID_AUTOPILOT1;
-  command.param1 = true_heading_deg;
+  command.param1 = std::fabs(relative_angle_deg);
   command.param2 = rate_deg_s;
-  command.param3 = 0; // shortest direction
-  command.param4 = 0; // absolute true-north heading
+  command.param3 = relative_angle_deg < 0 ? -1 : 1; // NED: negative CCW, positive CW
+  command.param4 = 1; // relative to heading when the FC accepts the command
   if (m_mavPass_ptr->send_command_long(command) != mavsdk::MavlinkPassthrough::Result::Success)
     return false;
   // Never reinstate a hold target after native mode/arming ownership changed.
   if (!isGuidedMode() || !isArmed() || !isFlightControllerConnected())
     return false;
-  // Preserve the accepted heading in the existing Guided hold refresh.
-  m_target_course = true_heading_deg;
+  // Leave the existing XYZ hold and the FC-owned FIXED yaw command latched.
   m_yaw_alignment_hold = true;
   return true;
 }

@@ -258,7 +258,7 @@ public:
   bool commandLoiterAtPos(XYPoint pos, bool holdCurrentAltitude = true);
   bool refreshCopterGuidedHold();
   bool commandPrecisionLoiter(bool enable, bool enterLoiterMode = true);
-  bool commandCopterYawAlignment(double true_heading_deg, double rate_deg_s);
+  bool commandCopterYawAlignment(double relative_angle_deg, double rate_deg_s);
   bool commandAndSetCourse(double heading, bool isAllowed = true); // command COG if in guided mode
 
   bool commandGuidedMode(bool alt_hold = false);

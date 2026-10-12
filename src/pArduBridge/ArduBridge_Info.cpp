@@ -127,8 +127,8 @@ void showInterfaceAndExit()
   blk("  CHANGE_SPEED, CHANGE_COURSE, CHANGE_ALTITUDE                 ");
   blk("  DEAD_MAN_POST_INTERRUPT                                      ");
   blk("  SITL_SPEEDUP = 1..100 // simulation-only SIM_SPEEDUP parameter");
-  blk("  YAW_ALIGN_REQUEST = id=...#heading=...#rate=...               ");
-  blk("    Copter only; absolute heading degrees, rate in degrees/s.   ");
+  blk("  YAW_ALIGN_REQUEST = id=...#angle=...#rate=...                 ");
+  blk("    Copter only; signed relative degrees [-180,180], deg/s.     ");
   blk("  RALLY_UPLOAD = id=...#x=...#y=...#altitude=...                ");
   blk("    One grounded/disarmed rally point; altitude is whole metres ");
   blk("    above Home and may not be closer than Home. ARM can require ");

@@ -47,17 +47,20 @@ struct UAV_Model {
 MAIN = r"""
 int main() {
   UAV_Model model;
-  assert(model.commandCopterYawAlignment(280, 30));
+  assert(model.commandCopterYawAlignment(-80, 30));
   auto &transport = *model.m_mavPass_ptr;
   assert(transport.sends == 1 && transport.last.command == 115);
   assert(transport.last.target_sysid == 17 && transport.last.target_compid == 1);
-  assert(transport.last.param1 == 280 && transport.last.param2 == 30);
-  assert(transport.last.param3 == 0 && transport.last.param4 == 0);
-  assert(model.m_target_course == 280); // subsequent Guided hold keeps the accepted goal
+  assert(transport.last.param1 == 80 && transport.last.param2 == 30);
+  assert(transport.last.param3 == -1 && transport.last.param4 == 1);
+  assert(model.m_target_course == 50); // relative command never fabricates an absolute goal
   assert(model.m_yaw_alignment_hold); // refresh must leave the latched XYZ/FIXED-yaw hold alone
+  model.m_yaw_alignment_hold = false;
+  assert(model.commandCopterYawAlignment(25, 30));
+  assert(transport.last.param1 == 25 && transport.last.param3 == 1 && transport.last.param4 == 1);
   transport.result = mavsdk::MavlinkPassthrough::Result::Failure;
   assert(!model.commandCopterYawAlignment(90, 30));
-  assert(model.m_target_course == 280); // rejection never substitutes a desired heading
+  assert(model.m_target_course == 50); // rejection never substitutes a desired heading
   transport.result = mavsdk::MavlinkPassthrough::Result::Success;
   for (bool *flag : {&model.copter, &model.connected, &model.guided, &model.armed, &model.received}) {
     *flag = false;
@@ -76,8 +79,8 @@ int main() {
     assert(!model.commandCopterYawAlignment(90, 30));
   }
   model.age = 0.1;
-  for (double heading : {-1.0, 360.0, double(INFINITY), double(NAN)})
-    assert(!model.commandCopterYawAlignment(heading, 30));
+  for (double angle : {-181.0, 181.0, double(INFINITY), double(NAN)})
+    assert(!model.commandCopterYawAlignment(angle, 30));
   for (double speed : {-1.0, 0.0, 91.0, double(INFINITY), double(NAN)})
     assert(!model.commandCopterYawAlignment(90, speed));
 }
@@ -85,7 +88,7 @@ int main() {
 
 
 class YawCommandTest(unittest.TestCase):
-    def test_native_admission_fc_ack_and_hold_heading(self):
+    def test_native_admission_relative_fc_ack_and_latched_hold(self):
         source = (BASE / "src/pArduBridge/UAV_Model.cpp").read_text()
         start = source.index("bool UAV_Model::commandCopterYawAlignment(")
         stop = source.index("bool UAV_Model::refreshCopterGuidedHold(", start)
